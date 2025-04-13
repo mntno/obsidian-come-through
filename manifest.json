@@ -1,0 +1,10 @@
+{
+	"id": "come-through",
+	"name": "Come Through",
+	"version": "0.0.1",
+	"minAppVersion": "1.8.0",
+	"description": "Plugin for memorizing.",
+	"author": "mntno",
+	"authorUrl": "https://github.com/mntno",	
+	"isDesktopOnly": false
+}
