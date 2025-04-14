@@ -1,6 +1,15 @@
+THIRD-PARTY NOTICES
+
+This project’s functionality relies on the following third-party dependencies, each with its own license:
+
+License notice for ts-fsrs
+--------------------------
+
+https://github.com/open-spaced-repetition/ts-fsrs/blob/main/LICENSE
+
 MIT License
 
-Copyright (c) 2025 Mantano Bhikkhu
+Copyright (c) 2025 Open Spaced Repetition
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +28,4 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
