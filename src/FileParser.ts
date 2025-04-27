@@ -1,27 +1,50 @@
-import { DeclarationBlock, IncompleteDeclarationSpecification } from "DeclarationBlock";
-import { FullID } from "FullID";
+import { DeclarationBlock, DeclarationLocation, IncompleteDeclarationSpecification } from "DeclarationBlock";
+import { NoteID, CardID, FullID } from "FullID";
 import { App, CachedMetadata, HeadingCache, SectionCache, TFile } from "obsidian";
-import { CardID, NoteID } from "Statistics";
+import { asNoteID } from "TypeAssistant";
 
 //#region Exported
 
-export interface ParserSettings {
+export interface ParseOptions {
+  contentRead?: ContentReadOptions,
+  likelyNoteIDs?: NoteID[],
+}
+
+/**
+ * Options regarding how the content of cards are populated.
+ */
+export interface ContentReadOptions {
   hideCardSectionMarker?: boolean;
   hideDeclarationBlock?: boolean;
 }
 
-export interface PostParseInfo {  
-  incompleteDeclarationInfos: IncompleteDeclarationInfo[],
+/**
+ * Contains auxiliary information collected during the parsing process. 
+ */
+export interface PostParseInfo {
+  /** Declarations that were encountered but needs to be complemented before they can be used. */
+  incompleteDeclarationInfos: DeclarationInfo[],
+  multipleDefinedIDs: FullID[],
 }
 
-export interface IncompleteDeclarationInfo {
-  noteID: NoteID,
-  frontSide?: boolean, 
+/**
+ * All info needed to extract a {@link DeclarationBlock|declaration block} from a note.
+ */
+export interface DeclarationInfo {
+  /** The declaration candidate. */
   declaration: IncompleteDeclarationSpecification,
+  /** The note where the {@link declaration} was found. */
+  noteID: NoteID,
+  /** {@link SectionCache|Section} in {@link noteID} where {@link declaration} was found. */
   section: SectionCache,
+  /** The location of the {@link declaration} within the {@link section}. */
+  location: DeclarationLocation,
 }
 
-/** Represents one whole card. {@link CardID} of both {@link FullID}s is the cards id and expected to be equal. */
+/** 
+ * Represents a complete card that can be displayed to the user, e.g., for review. 
+ * The {@link FullID.cardID} part of both {@link frontID} and {@link backID} are expected to be equal. 
+ */
 export type ParsedCard = {
   frontID: FullID;
   frontMarkdown: string;
@@ -29,13 +52,26 @@ export type ParsedCard = {
   backMarkdown: string;
 }
 
-export type IncompleteParsedCard = {
+/**
+ * Represents a card that potentially was only partly found.
+ * It can only be turned into a complete {@link ParsedCard|card} that can be reviewed if all values are non-null.
+ * Use {@link FileParser.isComplete} to check.
+ */
+export type MaybeParsedCard = {
   frontID?: FullID;
   frontMarkdown?: string;
   backID?: FullID;
   backMarkdown?: string;
 }
 
+export type ParsedCardResult = {
+  complete: ParsedCard | null;
+  incomplete: MaybeParsedCard | null;
+}
+
+/**
+ * Base {@link Error} thrown from {@link FileParser}.
+ */
 export class FileParserError extends Error {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);
@@ -43,86 +79,146 @@ export class FileParserError extends Error {
   }
 }
 
-export class FileParseNotFound extends Error {
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, options);
-    this.name = "FileParseNotFound";
-  }
-}
+export type IDFilter = (id: FullID) => boolean;
 
 //#endregion
 
 //#region Internal
 
-const FRONT_BACK_AT_REGEX = /(front|f|back|b)@([^\s]+)/i;
+/**
+ * Info needed to read the {@link ContentInfo|content} associated with {@link id}.
+ */
+interface IdentifiedContentInfo {
+  id: FullID;
+  contentInfo: ContentInfo
+}
 
 /**
- * Carries info for a particular {@link FullID} needed to find and read its associated contents.
+ * Used if the {@link ContentInfo.section} is was a {@link DeclarationBlock}.
  */
-interface CardSideInfo {
-  id: FullID;
-  span: HeadingSpan;
+interface DeclCardSideInfo extends IdentifiedContentInfo {
+  declaration: DeclarationBlock;
 }
 
-type IDFilter = (id: FullID) => {
-  filter: boolean;
-  stop: (id: FullID) => boolean;
-}
+/**
+ * Info needed to read content declared in a certain {@link section}.
+ */
+interface ContentInfo {
+  /**
+   * The section where the id is declared. 
+   * 
+   * Look at {@link SectionCache.type} to find the location of the ID declaration in the Markdown structure, e.g., "heading" or "code".
+  */
+  section: SectionCache;
 
-type HeadingSpan = {
+  /** Start position in the file that {@link section} declares as its content. */
   start: HeadingCache;
+
+  /** End delimiter in the file that {@link section} declares as its content.
+   * 
+   * Will be `null` if {@link start} was the last heading in the file (on the same level or lower),
+   * in which case the rest of the content, to EOF, is included.
+   * 
+   * @todo Probably should be a {@link SectionCache} instead.
+   */
   end: HeadingCache | null;
-  declarationBlock: SectionCache | null; 
+}
+
+const FULL_ID_REGEX = /(front|f|back|b)@([^\s]+)/i;
+
+type ParseResult = Record<CardID, MaybeParsedCard>;
+
+type IdentifiedContentInfoFilter = (id: IdentifiedContentInfo) => boolean;
+type ParsedCardBreaker = (info: IdentifiedContentInfo, card: MaybeParsedCard) => boolean;
+
+interface PopulationPredicate {
+  /** 
+   * Which {@link IdentifiedContentInfo|info} to include when iterating content. 
+   *
+   * This usually not known for both sides so be careful not to exclude files
+   * that might contain the content being searched for.
+   * 
+   * Can be used to avoid unnecessary processing. 
+   */
+  iterationFilter?: IdentifiedContentInfoFilter,
+
+  /** Whether to stop iterating. Use to avoid unnecessary processing. */
+  isDone?: ParsedCardBreaker,
+}
+
+const SECTION_TYPE_HEADING = "heading";
+const SECTION_TYPE_CODE = "code";
+
+type ContentRange = {
+  start: number;
+  end: number;
 }
 
 //#endregion
 
-/**
- * Parses a file. Based on a "parse type", knows where cards and their IDs are expected to be found.
- */
 export class FileParser {
 
   //#region Get ID
 
-  public static async getAllIDsInFile(file: TFile, app: App, filter?: (id: FullID) => boolean) {
+  public static async getAllIDsInFile(file: TFile, app: App, filter?: IDFilter) {
     return this.getAllIDsFromMetadata(
-      file,
+      asNoteID(file),
       await this.cachedRead(app, file),
       this.fileCacheOrThrow(app, file),
       filter);
   }
 
   /**
-   * 
-   * @param file File to parse for IDs.
-   * @param fileContents 
+   * Finds all declared {@link FullID|ids} in {@link fileContent} of {@link noteID} based on the provided {@link cache}.
+   * @param noteID
+   * @param fileContent 
    * @param cache The cache for the {@link file}
    * @param filter 
    * @returns 
    */
-  public static getAllIDsFromMetadata(file: TFile, fileContents: string, cache: CachedMetadata, filter?: (id: FullID) => boolean) {
+  public static getAllIDsFromMetadata(noteID: NoteID, fileContent: string, cache: CachedMetadata, filter?: IDFilter) {
+
     const ids: FullID[] = [];
-    const noteID = this.noteIDFromFile(file);
-    const output: PostParseInfo = {
+    const parseInfo: PostParseInfo = {
       incompleteDeclarationInfos: [],
+      multipleDefinedIDs: [],
     };
-    
+
+    // Used to detect if ids were declared more than once.
+    const parsedIDs = new Set<string>();
+
+    const checkExistance = (id: FullID) => {
+      const str = id.toString();
+      if (parsedIDs.has(str)) {
+        parseInfo.multipleDefinedIDs.push(id);
+        return true;
+      }
+      else {
+        parsedIDs.add(str);
+        return false;
+      }
+    };
+
     for (const currentHeading of cache.headings ?? []) {
-      const id = this.findIDInText(currentHeading.heading, noteID);
-      if (id && (filter === undefined || (filter && filter(id))))
-        ids.push(id);
+      const id = this.findFullIDInText(currentHeading.heading, noteID);
+      if (id && !checkExistance(id)) {
+        if (filter === undefined || (filter && filter(id)))
+          ids.push(id);
+      }
     }
 
-    // Go through all "root level Markdown blocks".
     for (const section of cache.sections ?? []) {
-      const id = this.getIDFromCodeBlock(section, noteID, fileContents, output);
-      if (id && (filter === undefined || (filter && filter(id))))
-        ids.push(id);
+      const declaration = this.getDeclarationFromSection(section, noteID, fileContent, parseInfo);
+      if (declaration) {
+        const id = this.fullIDFromDeclaration(declaration, noteID);
+        if (!checkExistance(id) && (filter === undefined || (filter && filter(id))))
+          ids.push(id);
+      }
     }
 
-    return { 
+    return {
       ids,
-      output,
+      output: parseInfo,
     };
   }
 
@@ -130,101 +226,80 @@ export class FileParser {
 
   //#region Get Card
 
-  /**
-   * Returns all cards in the vault.
-   * @param app 
-   * @param options 
-   * @returns 
-   */
-  public static async getAllCards(app: App, options?: ParserSettings) {
+  public static async getAllCards(app: App, options?: ParseOptions) {
 
-    const output: Record<CardID, IncompleteParsedCard> = {};
+    const parseResult: ParseResult = {};
 
     for (const file of app.vault.getFiles())
-      await this.populate(file, app, output, undefined, options);
+      await this.getContentFromFile(file, app, parseResult, undefined, options);
 
-    return this.separateCompleted(output);
+    return this.processParseResult(parseResult);
   }
 
-  public static async getCard(id: FullID, app: App, options?: ParserSettings) {
+  public static async getCard(id: FullID, app: App, options?: ParseOptions) {
 
-    const file = this.getFileFromID(id, app);
-    if (!file)
-      throw new FileParserError(`Could not find "${id.noteID}"`);
+    const predicate: PopulationPredicate = {
+      iterationFilter: (idContentInfo) => {
+        const sectionType = idContentInfo.contentInfo.section.type;
 
-    let foundFront = false;
-    let foundBack = false;
+        // For unique ids. If also filtering on noteID, then only this file will be looked at,
+        // while the other side is in another file and thus won't be found.
+        if (sectionType === SECTION_TYPE_CODE)
+          return idContentInfo.id.isCardEqual(id);
+
+        // Should work for file-scoped IDs.
+        if (sectionType === SECTION_TYPE_HEADING)
+          return idContentInfo.id.isEqual(id, true);
+
+        throw new Error(`Not Supported: ${sectionType}`);
+      },
+      isDone: (idContentInfo, maybeParsedCard) => {
+        if (!this.isComplete(maybeParsedCard))
+          return false;
+
+        const sectionType = idContentInfo.contentInfo.section.type;
+        if (sectionType === SECTION_TYPE_CODE)
+          return maybeParsedCard.frontID.isCardEqual(id);
+
+        if (sectionType === SECTION_TYPE_HEADING)
+          return maybeParsedCard.frontID.isEqual(id, true);
+
+        throw new Error(`Not Supported: ${sectionType}`);
+      }
+    };
 
     const cardID = id.cardIDOrThrow();
-    const output: Record<CardID, IncompleteParsedCard> = {};
+    const parseResult: ParseResult = {};
 
-    await this.populate(
-      file,
-      app,
-      output,
-      (parsedID) => ({
-        filter: parsedID.isEqual(id, true), // Let both sides through
-        stop: (idd) => {
-          if (idd.isFrontSide)
-            foundFront = true;
-          if (!idd.isFrontSide)
-            foundBack = true;
-          return foundFront && foundBack;
-        }
-      }),
-      options);
+    // Start with the most likely file that will contain both sides of the card.
+    for (const file of this.getAllFilesSortedByLikelihood(id, app, options?.likelyNoteIDs)) {
+      
+      await this.getContentFromFile(file, app, parseResult, predicate, options);
 
-    // The front side was not found 
-    if (Object.keys(output).length == 0)
-      throw new FileParserError(`Expected to find id ${cardID} in "${id.noteID}"`);
+      // As soon as both sides are found, stop iterating through the rest of the files.
+      if (Object.hasOwn(parseResult, cardID) && this.isComplete(parseResult[cardID]))
+        break;
+    }
 
-    const separated = this.separateCompleted(output);
+    const notFound: ParsedCardResult = { complete: null, incomplete: null };
+    if (!Object.hasOwn(parseResult, cardID))
+      return notFound;
 
+    const separated = this.processParseResult(parseResult);
     const resultCard = separated[cardID];
-    console.assert(resultCard);
-    if (!resultCard)
-      throw new FileParserError(`Expected to find id ${cardID} in "${id.noteID}"`);
 
-    // Both sides were found in the same file.
-    if (resultCard.complete)
-      return resultCard;
-
-    // TODO: Only look or missing side.
-    const getAllCardsResult = await this.getAllCards(app, options);
-
-    const resultCard2 = getAllCardsResult[cardID];
-    console.assert(resultCard2);
-    if (!resultCard2)
-      throw new FileParserError(`Expected to find id ${cardID} in "${id.noteID}"`);
-
-    return resultCard2;
-  }
-
-  private static async populate(
-    file: TFile,
-    app: App,
-    output: Record<CardID, IncompleteParsedCard>,
-    filter?: IDFilter,
-    options?: ParserSettings) {
-
-    const fileContent = await this.cachedRead(app, file);
-    const cache = this.fileCacheOrThrow(app, file);
-    const cardSpans = this.findCardSideInfosInFile(this.noteIDFromFile(file), fileContent, cache, filter, options);
-    await this.readHeadingSections(fileContent, cardSpans, output, options);
+    return resultCard ?? notFound;
   }
 
   /**
    * Separates those cards that are completed (i.e. both sides were found), with those uncompleted (only one side found).
-   * @param nullableRecord 
+   * @param maybeIncompleteCards 
    * @returns 
    */
-  private static separateCompleted(maybeIncompleteCards: Record<CardID, IncompleteParsedCard>) {
-    
-    const complete: Record<CardID, { 
-      complete: ParsedCard | null, 
-      incomplete: IncompleteParsedCard | null 
-    }> = {};
-    
+  private static processParseResult(maybeIncompleteCards: ParseResult) {
+
+    const complete: Record<CardID, ParsedCardResult> = {};
+
     for (const cardId in maybeIncompleteCards) {
       const maybe = maybeIncompleteCards[cardId];
       if (this.isComplete(maybe)) {
@@ -242,8 +317,13 @@ export class FileParser {
     return complete;
   }
 
-  private static isComplete(card: IncompleteParsedCard): card is ParsedCard {
-    return card.frontID && typeof card.frontMarkdown === 'string' && card.backID && typeof card.backMarkdown === 'string' ? true : false;
+  private static isComplete(card: MaybeParsedCard): card is ParsedCard {
+    return (
+      card.frontID &&
+      typeof card.frontMarkdown === 'string' &&
+      card.backID &&
+      typeof card.backMarkdown === 'string'
+    ) ? true : false;
   }
 
   //#endregion
@@ -255,9 +335,9 @@ export class FileParser {
    * @param noteID 
    * @returns 
    */
-  private static findIDInText(text: string, noteID: NoteID) {
+  private static findFullIDInText(text: string, noteID: NoteID) {
 
-    const match = FRONT_BACK_AT_REGEX.exec(text);
+    const match = FULL_ID_REGEX.exec(text);
 
     if (match) {
       const kind = match[1].toLowerCase();
@@ -272,120 +352,136 @@ export class FileParser {
     return null;
   }
 
-  private static getIDFromCodeBlock(section: SectionCache, noteID: NoteID, fileContent: string, output?: PostParseInfo) {
-    const sectionType = "code";
-    if (section.type !== sectionType)
+  /**
+   * 
+   * Only `code` section types are supported. `null` is returned for all other types.
+   * 
+   * @param section The {@link SectionCache|section} to search within {@link fileContent}.
+   * @param noteID 
+   * @param fileContent 
+   * @param parseInfo 
+   * @returns 
+   */
+  private static getDeclarationFromSection(section: SectionCache, noteID: NoteID, fileContent: string, parseInfo?: PostParseInfo) {
+    if (section.type !== SECTION_TYPE_CODE)
       return null;
 
     const codeBlock = fileContent.slice(section.position.start.offset, section.position.end.offset);
-    const declaration = DeclarationBlock.parseCodeBlock(codeBlock, (incomplete) => {
-      output?.incompleteDeclarationInfos.push({
-        noteID: noteID,        
+    const declaration = DeclarationBlock.parseCodeBlock(codeBlock, (incomplete, location) => {
+      parseInfo?.incompleteDeclarationInfos.push({
+        noteID: noteID,
         declaration: incomplete,
         section: section,
+        location: location,
       });
     });
 
-    if (declaration) {
-      if (!FullID.isSideValid(declaration.side))
-        throw new FileParserError(`Invalid value for "side": ${declaration.side}`);
-      
-      return new FullID(noteID, declaration.id, declaration.side);
-    }
-
-    return null;
+    return declaration;
   }
 
-  //#region Read Headings
+  //#region Get Content
+
+  private static async getContentFromFile(
+    file: TFile,
+    app: App,
+    result: ParseResult,
+    predicate?: PopulationPredicate,
+    options?: ParseOptions) {
+
+    const fileContent = await this.cachedRead(app, file);
+
+    await this.getContentFromInfos(
+      fileContent,
+      this.findAllContentInfosInFile(
+        asNoteID(file),
+        fileContent,
+        this.fileCacheOrThrow(app, file)
+      ),
+      result,
+      predicate,
+      options);
+  }
 
   /**
-   * Finds all {@link CardSideInfo}s in {@link file}.
-   * @param file 
-   * @param app 
-   * @param options 
+   * 
+   * @param noteID 
+   * @param fileContent 
+   * @param cache 
    * @returns 
    */
-  private static findCardSideInfosInFile(
-    noteID: NoteID,
-    fileContent: string,
-    cache: CachedMetadata,
-    predicate?: IDFilter,
-    options?: ParserSettings) {
+  private static findAllContentInfosInFile(noteID: NoteID, fileContent: string, cache: CachedMetadata) {
 
-    const headings = cache.headings;
-    if (!headings || headings.length == 0)
-      return [];
+    const cardInfos: IdentifiedContentInfo[] = [];
 
-    const cardInfos: CardSideInfo[] = [];
+    //#region Headings
+
+    const headings: HeadingCache[] = cache.headings ?? [];
     const numberOfHeadings = headings.length;
-
     for (let headingIndex = 0; headingIndex < numberOfHeadings; headingIndex++) {
 
       const currentHeading = headings[headingIndex];
-      const id = this.findIDInText(currentHeading.heading, noteID);
+      const id = this.findFullIDInText(currentHeading.heading, noteID);
       if (!id)
         continue;
 
-      const filter = predicate?.(id);
+      // Find the end position by looking at the next heading at the same level or lesser.
+      let nextFrontHeadingStartPos: HeadingCache | null = null;
+      let nextHeadingIndex = headingIndex + 1;
 
-      if (filter === undefined || filter.filter) {
+      while (nextHeadingIndex < numberOfHeadings && nextFrontHeadingStartPos === null) {
+        const nextHeading = headings[nextHeadingIndex];
+        if (nextHeading.level <= currentHeading.level)
+          nextFrontHeadingStartPos = nextHeading;
+        nextHeadingIndex += 1;
+      }
 
-        // Find the end position by looking at the next heading at the same level or lesser.
-        let nextFrontHeadingStartPos: HeadingCache | null = null;
-        let nextHeadingIndex = headingIndex + 1;
-
-        while (nextHeadingIndex < numberOfHeadings && nextFrontHeadingStartPos === null) {
-          const nextHeading = headings[nextHeadingIndex];
-          if (nextHeading.level <= currentHeading.level)
-            nextFrontHeadingStartPos = nextHeading;
-          nextHeadingIndex += 1;
+      cardInfos.push({
+        id: id,
+        contentInfo: {
+          start: currentHeading,
+          end: nextFrontHeadingStartPos,
+          section: {
+            type: SECTION_TYPE_HEADING,
+            position: currentHeading.position,
+          }
         }
-
-        cardInfos.push({
-          id: id,
-          span: {
-            start: currentHeading,
-            end: nextFrontHeadingStartPos,
-            declarationBlock: null,
-          }
-        })
-
-        if (filter && filter.stop(id))
-          return cardInfos;
-      }
+      });
     }
 
-    // Go through all "root level Markdown blocks".
+    //#endregion
+
+    //#region Sections
+
     for (const section of cache.sections ?? []) {
-      const id = this.getIDFromCodeBlock(section, noteID, fileContent);
-      if (!id)
+      const declaration = this.getDeclarationFromSection(section, noteID, fileContent);
+      if (!declaration)
         continue;
 
-      const filter = predicate?.(id);
+      const contentInfo = this.contentInfoFromSection(section, cache);
+      if (!contentInfo)
+        continue;
 
-      if (filter === undefined || filter.filter) {
-        const span = this.headingSpanOfSection(section, cache);
-        if (!span)
-          continue;
-
-        cardInfos.push({
-          id: id,
-          span: {
-            start: span.start,
-            end: span.end,
-            declarationBlock: section,
-          }
-        });
-
-        if (filter && filter.stop(id))
-          return cardInfos;
-      }
+      cardInfos.push({
+        id: this.fullIDFromDeclaration(declaration, noteID),
+        contentInfo: contentInfo,
+        declaration: declaration,
+      } as DeclCardSideInfo);
     }
+
+    //#endregion
 
     return cardInfos;
   }
 
-  private static headingSpanOfSection(section: SectionCache, cache: CachedMetadata): HeadingSpan | null {
+  /**
+   * Finds the start and end positions in a file, using its {@link cache},
+   * that the given {@link section} declares as its content.
+   * 
+   * @param section One of {@link CachedMetadata.sections} of {@link cache}.
+   * @param cache Cache of the file which the returned {@link ContentInfo} refers to.
+   * @returns `null` if no content found.
+   */
+  private static contentInfoFromSection(section: SectionCache, cache: CachedMetadata): ContentInfo | null {
     const headings = cache.headings;
     if (!headings || headings.length == 0)
       return null;
@@ -400,111 +496,194 @@ export class FileParser {
       if (orderedHeadings[headingCounter].position.start.offset > section.position.end.offset)
         continue;
 
-      const span: HeadingSpan = {
+      const info: ContentInfo = {
         start: orderedHeadings[headingCounter],
         end: null,
-        declarationBlock: section,
+        section: section,
       }
 
       let nextHeadingIndex = headingCounter + 1;
       if (nextHeadingIndex < numberOfHeadings)
-        span.end = headings[nextHeadingIndex];
+        info.end = headings[nextHeadingIndex];
 
-      return span;
+      return info;
     }
 
     return null;
   }
 
   /**
-   * Reads all headings and their contents from {@link file}, defined by {@link headingSpans}, into {@link cardInfoRecord} .
+   * Reads all headings and their contents from {@link fileContent}, 
+   * referenced by {@link contentInfos}, into {@link result}.
    * @param fileContent 
-   * @param headingSpans 
-   * @param cardInfoRecord 
+   * @param contentInfos 
+   * @param result 
    * @param options 
    */
-  private static async readHeadingSections(
+  private static async getContentFromInfos(
     fileContent: string,
-    headingSpans: CardSideInfo[],
-    cardInfoRecord: Record<CardID, IncompleteParsedCard>,
-    options?: ParserSettings) {
+    contentInfos: IdentifiedContentInfo[],
+    result: ParseResult,
+    predicate?: PopulationPredicate,
+    options?: ParseOptions) {
 
-    const readHeadingSection = (data: CardSideInfo) =>
-      this.readHeadingSection(data.span, fileContent, options);
+    const getContent = (sideInfo: IdentifiedContentInfo, cardSideInfos: IdentifiedContentInfo[]) => {
+      return this.getContentFromInfo(fileContent, sideInfo, cardSideInfos, options);
+    };
 
-    for (const headingSpan of headingSpans) {
-      const cardID = headingSpan.id.cardID!;
+    const filteredContentInfos = predicate?.iterationFilter ? contentInfos.filter(i => {
+      return predicate.iterationFilter!(i);
+    }) : contentInfos;
 
-      if (!Object.prototype.hasOwnProperty.call(cardInfoRecord, cardID))
-        cardInfoRecord[cardID] = {};
+    for (const idContentInfo of filteredContentInfos) {
+      const cardID = idContentInfo.id.cardIDOrThrow();
 
-      const cardInfo = cardInfoRecord[cardID];
-      if (headingSpan.id.isFrontSide) {
-        cardInfo.frontMarkdown = readHeadingSection(headingSpan);
-        cardInfo.frontID = headingSpan.id;
+      if (!Object.hasOwn(result, cardID))
+        result[cardID] = {};
+
+      const card = result[cardID];
+      if (idContentInfo.id.isFrontSide) {
+        card.frontMarkdown = getContent(idContentInfo, contentInfos);
+        card.frontID = idContentInfo.id;
       }
       else {
-        cardInfo.backMarkdown = readHeadingSection(headingSpan);
-        cardInfo.backID = headingSpan.id;
+        card.backMarkdown = getContent(idContentInfo, contentInfos);
+        card.backID = idContentInfo.id;
       }
+
+      if (predicate?.isDone && predicate.isDone(idContentInfo, card))
+        break;
     }
   }
 
   /**
-   * Reads the whole content of a heading section.
+   * Gets the whole content of a heading section.
    * 
-   * @param heading Heading cache on the file.
-   * @param nextHeading `null` if {@link heading} was the last heading in the file. 
-   * @param markdown The file's content.
-   * @param removeHeading `true` to skip reading the heading.
+   * @param fileContent The file's content.
+   * @param info The side to read from {@link fileContent}.    
+   * @param allInfos All sides in {@link fileContent}, so that they can be excluded.
+   * @param options 
    * @returns 
    */
-  private static readHeadingSection(span: HeadingSpan, markdown: string, options?: ParserSettings): string {
-        
+  private static getContentFromInfo(
+    fileContent: string,
+    info: IdentifiedContentInfo,
+    allInfos: IdentifiedContentInfo[],
+    options?: ParseOptions): string {
+
     const {
       hideCardSectionMarker: removeHeading = false,
       hideDeclarationBlock = true,
-    } = options || {};
+    } = options?.contentRead || {};
 
-    const frontHeadingStartPos = span.start.position.start.offset;
-    const frontHeadingEndPos = span.start.position.end.offset;
-    const nextHeadingStartPos = span.end?.position.start.offset;
+    const contentInfo = info.contentInfo;
+    const headingStartOffset = contentInfo.start.position.start.offset;
+    const headingEndOffset = contentInfo.start.position.end.offset;
+    const nextHeadingStartOffset = contentInfo.end?.position.start.offset;
+    const endOffset = nextHeadingStartOffset ?? fileContent.length;
 
-    let content = (nextHeadingStartPos ? markdown.slice(frontHeadingEndPos, nextHeadingStartPos) : markdown.slice(frontHeadingEndPos));
+    const rangesToExclude: ContentRange[] = [];
 
-    if (hideDeclarationBlock && span.declarationBlock) {
-      const blockStartOffset = span.declarationBlock.position.start.offset - frontHeadingEndPos;
-      const blockLength = span.declarationBlock.position.end.offset - span.declarationBlock.position.start.offset;
-      const beforeBlock = content.slice(0, blockStartOffset);
-      content = beforeBlock + content.slice(blockStartOffset + blockLength);
-    }
-
-    if (removeHeading) {
-      return content.trimStart();
-    } else {
-      const heading = markdown.slice(frontHeadingStartPos, frontHeadingEndPos);
-      const headingWithoutID = heading.replace(FRONT_BACK_AT_REGEX, "");
-
+    // Range of substring before the content to be returned.
+    if (hideDeclarationBlock && contentInfo.section.type === SECTION_TYPE_HEADING) {
+      
+      // Remove everything before the heading
+      rangesToExclude.push({
+        start: 0,
+        end: headingStartOffset
+      });
+      
+      // Remove the part of the heading consisting of the ID
+      const heading = fileContent.slice(headingStartOffset, headingEndOffset);
+      const match = FULL_ID_REGEX.exec(heading);
+      if (match) {
+        const matchStartIndex = headingStartOffset + match.index;
+        const matchEndIndex = matchStartIndex + match[0].length;
+        rangesToExclude.push({
+          start: matchStartIndex,
+          end: matchEndIndex
+        });
+      }
+      
+      /*
       // If nothing was entered but the id, show the card ID.
       if (headingWithoutID.replaceAll("#", "").trim().length == 0) {
         try {
-          return FullID.cardIDFromString(heading) + content;
+          return FullID.cardIDFromString(heading) + allContentInSection;
         }
         catch {
-          return heading + content;;
+          return heading + allContentInSection;;
         }
       }
-      else
-        return headingWithoutID + content;
+      */
     }
+    else {
+      rangesToExclude.push({
+        start: 0,
+        end: removeHeading ? headingEndOffset : headingStartOffset
+      });
+    }
+
+    // Find ranges that are within the content to be returned that should be excluded.
+    for (const info of allInfos) {
+      const section = info.contentInfo.section;
+
+      if (section.type === SECTION_TYPE_CODE) {
+
+        if (section.position.start.offset > headingEndOffset && section.position.start.offset < endOffset) {
+
+          const rangeToExclude = {
+            start: section.position.start.offset,
+            end: section.position.end.offset
+          };
+
+          if (hideDeclarationBlock || contentInfo.section.position.start.offset != rangeToExclude.start)
+            rangesToExclude.push(rangeToExclude);
+        }
+      }
+    }
+
+    // Range of substring after the content to be returned.
+    rangesToExclude.push({
+      start: endOffset,
+      end: fileContent.length
+    });
+
+    return this.subStringExcludingSpans(fileContent, rangesToExclude);
+  }
+
+  /**   
+   * @param fileContent 
+   * @param excludeRanges 
+   * @returns A subset of {@link fileContent} excluding what is refereced by {@link excludeRanges}.
+   */
+  private static subStringExcludingSpans(fileContent: string, excludeRanges: ContentRange[]) {
+    if (excludeRanges.length == 0)
+      return "";
+
+    const sorted = excludeRanges.sort((a, b) => {
+      return a.start - b.start;
+    });
+
+    const rangesToJoin: string[] = [];
+    let startIndex = 0;
+
+    for (const range of sorted) {
+      ;
+      rangesToJoin.push(fileContent.slice(startIndex, range.start));
+      startIndex = range.start + (range.end - range.start);
+    }
+    rangesToJoin.push(fileContent.slice(startIndex));
+
+    return rangesToJoin.join(""); // If [separator is] omitted, the array elements are separated with a comma.
   }
 
   //#endregion
 
   //#region Helpers
 
-  private static noteIDFromFile(file: TFile): NoteID {
-    return file.path;
+  private static fullIDFromDeclaration(declaration: DeclarationBlock, noteID: NoteID) {
+    return FullID.create(noteID, declaration.id, DeclarationBlock.isFrontSide(declaration, true));
   }
 
   private static async cachedRead(app: App, file: TFile) {
@@ -520,6 +699,46 @@ export class FileParser {
 
   private static getFileFromID(id: FullID, app: App) {
     return app.vault.getFileByPath(id.noteID);
+  }
+
+  /**
+   * In most cases the front and back sides of a card will be declared in the same file.
+   * Either way, at least one side will be declared in the file sorted first by this method.
+   * @param id The id whose declaration is expected to be found in the first file returned by this method.
+   * @param app
+   * @param hints
+   * @returns Returns all files with the most likely file sorted first.
+   */
+  private static getAllFilesSortedByLikelihood(id: FullID, app: App, hints: NoteID[] = []) {
+    // Note: finding the index and then inserting at index 0 is not necessarily more efficient.
+    return app.vault.getFiles().sort((fileA, fileB) => {
+      if (fileA.path == id.noteID)
+        return -1;
+      if (fileB.path == id.noteID)
+        return 1;
+
+      if (hints.includes(fileA.path))
+        return -1;
+      if (hints.includes(fileB.path))
+        return 1;
+
+      return 0;
+    });
+  }
+
+  /**
+   * Once you have the {@link HeadingCache} there's no use for the corresponding {@link SectionCache}.
+   * This is just for completeness.
+   */
+  private static findSectionCacheForHeading(headingCache: HeadingCache, cache: CachedMetadata): SectionCache | null {
+    return cache.sections?.find(
+      (section) =>
+        section.type === SECTION_TYPE_HEADING &&
+        section.position.start.line === headingCache.position.start.line &&
+        section.position.start.col === headingCache.position.start.col &&
+        section.position.end.line === headingCache.position.end.line &&
+        section.position.end.col === headingCache.position.end.col
+    ) ?? null;
   }
 
   //#endregion

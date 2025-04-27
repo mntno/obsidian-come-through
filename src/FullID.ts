@@ -1,17 +1,9 @@
-import { TFile } from "obsidian";
-import { CardID, NoteID } from "Statistics";
-
-export function asNoteID(value: TFile | string): NoteID {
-  if (value instanceof TFile)
-    return value.path;
-  if (typeof value === 'string' && value.length > 0) 
-    return value;
-  throw new TypeError(`${value}`);
-}
+export type CardID = string;
+export type NoteID = string;
 
 export class FullID implements FullID {
 
-  constructor(noteID: NoteID, cardID: CardID, cardSide?: string) {    
+  constructor(noteID: NoteID, cardID: CardID, cardSide?: string) {
     this._noteID = noteID.trim(); // File names are case sensitive. Do not change case.
     this._cardID = cardID.trim().toLowerCase(); //toLocaleLowerCase('en-US')
 
@@ -35,7 +27,7 @@ export class FullID implements FullID {
   }
 
   public newWithCard(id: CardID) {
-    return new FullID(this.noteID, id); 
+    return new FullID(this.noteID, id);
   }
 
   //#region Parse string
@@ -46,7 +38,7 @@ export class FullID implements FullID {
    * @returns 
    * @throws `Error` if requirements failed.
    */
-  public static fromString(inputString: string): FullID {    
+  public static fromString(inputString: string): FullID {
     const parts = inputString.split('@');
 
     let cardSide: string | undefined;
@@ -93,7 +85,7 @@ export class FullID implements FullID {
       const i2 = afterSeparator.indexOf("@", 0);
       if (i2 < 0)
         return afterSeparator;
-      else 
+      else
         return afterSeparator.slice(0, i2);
     }
   }
@@ -118,7 +110,7 @@ export class FullID implements FullID {
   public get cardID(): CardID {
     return this._cardID;
   }
-  private readonly _cardID: CardID;  
+  private readonly _cardID: CardID;
 
   public cardIDOrThrow() {
     this.throwIfNoCardID();
@@ -129,7 +121,7 @@ export class FullID implements FullID {
     if (!this.cardID)
       throw new Error(`Full ID "${this}" is missing card ID.`);
   }
-  
+
   public get cardSide(): string | undefined {
     return this._cardSide;
   }
@@ -171,11 +163,8 @@ export class FullID implements FullID {
    * @returns 
    */
   public isEqual(other: FullID, sideInsensitive: boolean) {
-    if (!this.cardID || !other.cardID)
-      return false;
-
-    return this.isNoteEqual(other) && 
-      this.isCardEqual(other) && 
+    return this.isNoteEqual(other) &&
+      this.isCardEqual(other) &&
       (sideInsensitive ? true : this.isFrontSide == other.isFrontSide);
   }
 

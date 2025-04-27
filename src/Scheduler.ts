@@ -1,37 +1,17 @@
 import { FullID } from 'FullID';
-import { Statistics, StatisticsData } from 'Statistics';
+import { CardIDDataTuple, DataStore, StatisticsData } from 'DataStore';
 import { createEmptyCard, fsrs, generatorParameters, Rating, FSRS, Card, State, Grade, TypeConvert, default_request_retention, default_maximum_interval, default_enable_fuzz, default_enable_short_term } from 'ts-fsrs';
 
-export class SchedulerError extends Error {
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, options);
-    this.name = "SchedulerError";
-  }
-}
-
-export interface GetDataOptions {
-  sortByDueDateAsc?: boolean;
-
-  /**
-   * Sort so that the most recent reviewed card comes first.
-   * Cards without latest review date will be sorted before those that have. 
-   */
-  sortByLastReviewDateDesc?: boolean;
-  sortByRetrievability?: boolean;
-  reviewDate?: Date,
-  onlyIfDue?: boolean,
-}
-
-export interface DataItem {
+type DataItem = {
   id: FullID;
   card: Card;
 }
 
 export class Scheduler {
 
-  private fsrs: FSRS;  
+  private fsrs: FSRS;
 
-  public constructor(private readonly data: Statistics) {
+  public constructor(private readonly data: DataStore) {
 
     const params = generatorParameters({
       request_retention: default_request_retention,
@@ -39,145 +19,82 @@ export class Scheduler {
       enable_short_term: default_enable_short_term,
       maximum_interval: default_maximum_interval,
       // w: default_w,
-    });    
+    });
     this.fsrs = fsrs(params);
   }
 
-  //#region
-
-  public getAllItems(options: GetDataOptions = {}) {
-    const {
-      sortByDueDateAsc = false,
-      sortByLastReviewDateDesc = false,
-      sortByRetrievability = false,
-      reviewDate = new Date(),
-      onlyIfDue = false,
-    } = options;
-
-    let allData = this.data.getAllCards().map<DataItem>(i => {
-      return { id: i.id, card: Scheduler.asCard(i.data.s)};
-    }); 
-
-    if (sortByDueDateAsc) {
-      allData = allData.sort(this.sortDueDateAsc);
-    }
-    else if (sortByLastReviewDateDesc) {      
-      allData = allData.sort((a, b) => {
-
-        if (a.card.last_review && b.card.last_review)
-          return TypeConvert.time(b.card.last_review).getTime() - TypeConvert.time(a.card.last_review).getTime();
-
-        // If none of them have last review, sort by due date asc.
-        if (a.card.last_review === undefined && b.card.last_review === undefined)
-          return this.sortDueDateAsc(a, b);
-
-        // If they have a last review, sort after the ones who don't have.
-        if (a.card.last_review)
-          return -1;
-        if (b.card.last_review)
-          return -1;
-
-        return 0;
-      });
-    }
-    else if (sortByRetrievability) {
-      allData = allData.sort((a, b) => {
-        const ar = this.fsrs.get_retrievability(a.card, reviewDate, false);
-        const br = this.fsrs.get_retrievability(b.card, reviewDate, false);
-        if (ar < br) return -1;
-        if (ar > br) return 1;
-        return 0;
-      });
-    }
-
-    return onlyIfDue ? allData.filter(d => {
-      return this.isCardDue(d.card, reviewDate);
-    }) : allData;
-  }
-
-  private groupItemsByStateSortedByDue(groupRelearningAsLearning: boolean) {
-
-    const grouped: Record<State, { id: FullID, card: Card }[]> = {
-      [State.New]: [],
-      [State.Learning]: [],
-      [State.Relearning]: [],
-      [State.Review]: [],
-    };
-
-    for (const item of this.getAllItems({ sortByDueDateAsc: true })) {
-      if (groupRelearningAsLearning && item.card.state === State.Relearning)
-        grouped[State.Learning].push(item);
-      else
-        grouped[item.card.state as State].push(item);
-    }
-
-    return grouped;
-  }
-
-  public newStatistics() {
+  public createItem() {
     return Scheduler.asStatistics(createEmptyCard(new Date()));
   }
 
-  //#endregion
+  public rateItem(id: FullID, grade: Grade, reviewDate?: Date) {
+    this.data.editCard(id, (editor) => {
+      const recordLogItem = this.fsrs.next(Scheduler.asCard(editor.data.s), reviewDate ?? new Date(), grade);
+      Scheduler.setStatistics(editor.data.s, recordLogItem.card);
+      //this.data.log.unshift(recordLogItem.log);
+      return true;
+    });
+  }
+
+  public previewNextItem(data: StatisticsData, reviewDate?: Date) {
+    return this.fsrs.repeat(Scheduler.asCard(data), reviewDate ?? new Date());
+  }
 
   /**
-   * Calculates the next state of memory based on the current state, time elapsed, and grade.
+   * Get the next review item from {@link cards}.
    * 
-   * @returns The next state of memory with updated difficulty and stability.
+   * @param cards 
+   * @param reviewDate 
+   * @returns `null` if there is noting to review at {@link reviewDate}.
    */
-  private nextState(rating: Rating, card?: Card) {
-    const nextMemoryState = this.fsrs.next_state(
-      card ? { stability: card.stability, difficulty: card.difficulty } : null,
-      card ? card.elapsed_days : 0,
-      rating,
-    );
-  }
+  public getNextItem(cards: CardIDDataTuple[], reviewDate: Date): {
+    id: FullID;
+    statistics: StatisticsData;
+  } | null {
 
-  private getCard(id: FullID) {
-    return Scheduler.asCard(this.data.getCard(id, true)!.s);
-  }
-
-  public async rateItem(id: FullID, grade: Grade, reviewDate?: Date) {
-    const cardData = this.data.getCard(id, true)!;
-    const recordLogItem = this.fsrs.next(Scheduler.asCard(cardData.s), reviewDate ?? new Date(), grade);
-    Scheduler.setStatistics(cardData.s, recordLogItem.card);
-    //this.data.log.unshift(recordLogItem.log);
-    await this.data.save();
-  }
-
-  public getNextItem(reviewDate?: Date) {
     let nextItem: DataItem | null = null;
 
-    const allItemsSortedByLastReview = this.getAllItems({
-      sortByLastReviewDateDesc: true,
-      reviewDate: reviewDate,
-    });
-            
-    // Get the latest item that's been reviewed/rated.
-    const lastReviewedItem = allItemsSortedByLastReview.find(p => p.card.last_review !== undefined);
-    
-    if (lastReviewedItem) {            
-      const groupedByStateSortedByDueDate = this.groupItemsByStateSortedByDue(true)      
-      const nextState = this.getNextStateToUse(lastReviewedItem.card.state, groupedByStateSortedByDueDate);      
-      nextItem = groupedByStateSortedByDueDate[nextState].filter(p => p.id !== lastReviewedItem.id).first() ?? null;
+    const items = cards.map<DataItem>(i => ({
+      id: i.id,
+      card: Scheduler.asCard(i.data.s)
+    }));
+
+    // Find the latest item that's been reviewed / rated.    
+    const lastReviewedItem = items
+      .sort(Scheduler.Comparer.sortByLastReviewDateDesc)
+      .find(p => p.card.last_review !== undefined);
+
+    if (lastReviewedItem) {
+      console.assert(lastReviewedItem.card.last_review && Scheduler.isDateLater(lastReviewedItem.card.last_review, new Date()), "Expected last review date to be in the past.");
+
+      const groupedByStateSortedByDueDate = this.groupItemsByState(
+        items.sort(Scheduler.Comparer.sortDueDateAsc),
+        true);
+
+      const nextState = this.getNextStateToUse(
+        reviewDate,
+        lastReviewedItem.card.state,
+        groupedByStateSortedByDueDate);
+
+      const itemsInState = groupedByStateSortedByDueDate[nextState];
+
+      if (itemsInState.length > 1) {
+        nextItem = itemsInState.filter(i => i !== lastReviewedItem).first() ?? null;
+      }
+      else if (itemsInState.length == 1) {
+        nextItem = itemsInState[0];
+        if (nextItem === lastReviewedItem && !this.isCardDue(lastReviewedItem.card, reviewDate))
+          nextItem = null;
+      }
     }
-    else {            
-      nextItem = allItemsSortedByLastReview
-        .filter(p => p.card.last_review === undefined) // Get unreviewed (presumably the same result as in items[State.New]). 
-        .sort(this.sortDueDateAsc).first() // Re-sort by due date.
-        ?? null;      
+    else {
+      nextItem = items.sort(Scheduler.Comparer.newest).first() ?? null;
     }
 
     return nextItem ? { id: nextItem.id, statistics: Scheduler.asStatistics(nextItem.card) } : null;
   }
 
-  public previewNextItemByID(id: FullID, reviewDate?: Date) {    
-    return this.fsrs.repeat(this.getCard(id), reviewDate ?? new Date());
-  }
-
-  public previewNextItem(data: StatisticsData, reviewDate?: Date) {    
-    return this.fsrs.repeat(Scheduler.asCard(data), reviewDate ?? new Date());
-  }
+  //#region
 
   /**
    * 
@@ -185,18 +102,18 @@ export class Scheduler {
    * @param groupedByStateSortedByDueDate Cards with {@link State.Relearning} are expected to be merged with {@link State.Learning}.
    * @returns If {@link State.Learning} is returned, cards in {@link State.Relearning} state may also be used.
    */
-  private getNextStateToUse(lastState: State, groupedByStateSortedByDueDate: Record<State, {
+  private getNextStateToUse(date: Date, lastState: State, groupedByStateSortedByDueDate: Record<State, {
     id: FullID;
     card: Card;
   }[]>): State {
-
+    
     const hasNewItems = groupedByStateSortedByDueDate[State.New].length > 0;
     const hasLearningItems = groupedByStateSortedByDueDate[State.Learning].length > 0;
     const hasRelearningItems = groupedByStateSortedByDueDate[State.Relearning].length > 0;
     const hasReviewItems = groupedByStateSortedByDueDate[State.Review].length > 0;
-    
+
     if (hasRelearningItems)
-      throw new Error();
+      throw new Error("Internal Error");
 
     let nextState = State.New;
 
@@ -227,13 +144,13 @@ export class Scheduler {
           nextState = State.Review;
         break;
     }
-   
+
     // If next state is learning/relearning and there are cards in those states due, go ahead.
     // The first card in the array is expected to be due next.
-    if (nextState === State.Learning && hasLearningItems && this.isCardDue(groupedByStateSortedByDueDate[State.Learning][0].card)) {
+    if (nextState === State.Learning && hasLearningItems && this.isCardDue(groupedByStateSortedByDueDate[State.Learning][0].card, date)) {      
       return State.Learning;
     }
-    else {
+    else {      
       if (!hasNewItems)
         return State.Review
       else if (!hasReviewItems)
@@ -243,6 +160,43 @@ export class Scheduler {
     }
   }
 
+  private groupItemsByState(items: DataItem[], groupRelearningAsLearning: boolean) {
+
+    const grouped: Record<State, DataItem[]> = {
+      [State.New]: [],
+      [State.Learning]: [],
+      [State.Relearning]: [],
+      [State.Review]: [],
+    };
+
+    for (const item of items) {
+      if (groupRelearningAsLearning && item.card.state === State.Relearning)
+        grouped[State.Learning].push(item);
+      else
+        grouped[item.card.state as State].push(item);
+    }
+
+    return grouped;
+  }
+
+  private asCard(id: FullID) {
+    return Scheduler.asCard(this.data.getCard(id, true)!.s);
+  }
+
+  //#endregion
+
+  private nextState(rating: Rating, card?: Card) {
+    const nextMemoryState = this.fsrs.next_state(
+      card ? { stability: card.stability, difficulty: card.difficulty } : null,
+      card ? card.elapsed_days : 0,
+      rating,
+    );
+  }
+
+  private previewNextItemByID(id: FullID, reviewDate?: Date) {
+    return this.fsrs.repeat(this.asCard(id), reviewDate ?? new Date());
+  }
+
   //#region
 
   /**
@@ -250,31 +204,91 @@ export class Scheduler {
    * @param date The {@link Date} to compare against. If later than {@link card}, then the latter is due.
    * @returns 
    */
-  public isCardDue(card: Card, date: Date = new Date()) {    
-    return Scheduler.isDue(card.due, date);
+  public isCardDue(card: Card, date: Date) {
+    return Scheduler.isDateLater(card.due, date);
   }
 
   public isStatisticsDue(data: StatisticsData, compareDate: Date = new Date()) {
-    return Scheduler.isDue(TypeConvert.time(data.due), compareDate);
+    return Scheduler.isDateLater(TypeConvert.time(data.due), compareDate);
   }
 
-  public static isDue(date: Date | string, compareDate: Date = new Date()): boolean {
+  /**
+   * 
+   * @param date 
+   * @param compareDate 
+   * @returns `true` if {@link compareDate} is later than {@link date}.
+   */
+  public static isDateLater(date: Date | string, compareDate: Date = new Date()): boolean {
     if (typeof date === 'object' && date instanceof Date) {
       return compareDate.getTime() - date.getTime() > 0 ? true : false;
     } else {
-      return this.isDue(TypeConvert.time(date), compareDate);
+      return this.isDateLater(TypeConvert.time(date), compareDate);
     }
-  }
-
-  private sortDueDateAsc(a: DataItem, b: DataItem): number {    
-    return TypeConvert.time(a.card.due).getTime() - TypeConvert.time(b.card.due).getTime();
   }
 
   public retrievability(statistics: StatisticsData, date?: Date | string) {
     return this.fsrs.get_retrievability(Scheduler.asCard(statistics), date ?? new Date(), false);
-  } 
+  }
 
   //#endregion
+
+  private static Comparer = class {
+
+    /**
+     * Sort by last reviewed.
+     * 
+     * Sort by the date an item was latest reviewed descending, 
+     * i.e., the item with the latest last review date will be sorted first.
+     * 
+     * Items without a last review date will be sorted last as they have not been reviewed.
+     */
+    public static sortByLastReviewDateDesc(a: DataItem, b: DataItem): number {
+
+      if (b.card.last_review && a.card.last_review)
+        return TypeConvert.time(b.card.last_review).getTime() - TypeConvert.time(a.card.last_review).getTime();
+
+      if (b.card.last_review !== undefined && a.card.last_review === undefined)
+        return 1;
+
+      if (b.card.last_review === undefined && a.card.last_review !== undefined)
+        return -1;
+
+      return 0;
+    }
+
+    public static sortDueDateAsc(a: DataItem, b: DataItem): number {
+      return TypeConvert.time(a.card.due).getTime() - TypeConvert.time(b.card.due).getTime();
+    }
+
+    public static sortByRetrievability(fsrs: FSRS, date: Date, a: DataItem, b: DataItem) {
+      const ar = fsrs.get_retrievability(a.card, date, false);
+      const br = fsrs.get_retrievability(b.card, date, false);
+      if (ar < br) return -1;
+      if (ar > br) return 1;
+      return 0;
+    }
+
+    public static newest(a: DataItem, b: DataItem): number {
+
+      if (a.card.state == State.New && b.card.state == State.New)
+        return this.sortDueDateAsc(a, b);
+      if (a.card.state == State.New && b.card.state != State.New)
+        return 1;
+      if (a.card.state != State.New && b.card.state == State.New)
+        return -1
+
+      const aIsLearningOrRelearning = a.card.state == State.Learning || a.card.state == State.Relearning;
+      const bIsLearningOrRelearning = b.card.state == State.Learning || b.card.state == State.Relearning;
+      if (aIsLearningOrRelearning && bIsLearningOrRelearning)
+        return this.sortDueDateAsc(a, b);
+      if (aIsLearningOrRelearning && !bIsLearningOrRelearning)
+        return 1;
+      if (!aIsLearningOrRelearning && bIsLearningOrRelearning)
+        return -1;
+
+      return this.sortDueDateAsc(a, b);
+    }
+  }
 
   private static asCard(s: StatisticsData): Card {
     return {

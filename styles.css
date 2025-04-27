@@ -1,11 +1,13 @@
 
 
-.workspace-leaf-content[data-type='come-through-view-review'] .view-content {
+.workspace-leaf-content[data-type='come-through-view-review'] .view-content,
+.workspace-leaf-content[data-type='come-through-view-decks'] .view-content {
   padding: 0;
   overflow: hidden;
 }
 
-.workspace-leaf-content[data-type='come-through-view-review'] .markdown-reading-view {
+.workspace-leaf-content[data-type='come-through-view-review'] .markdown-reading-view,
+.workspace-leaf-content[data-type='come-through-view-decks'] .markdown-reading-view {
   width: 100%;
   height: 100%;
 }
@@ -49,30 +51,78 @@
   border-radius: 8px;
 }
 
-.block-language-comethrough, .block-language-ct { 
+.block-language-comethrough, 
+.block-language-ct { 
   color: var(--text-normal);
-  background-color: rgba(var(--color-blue-rgb), 0.1);
   font-style: var(--font-monospace-theme);
   font-size: var(--font-text-size);
   font-weight: var(--font-weight);
-  border-width: var(--border-width);
   border-radius: var(--callout-radius);
-  border-color: var(--color-orange);
   padding: var(--callout-padding);
 }
 
-.block-language-comethrough .callout-title, .block-language-ct .callout-title {
-  color: var(--color-blue);
+.block-language-comethrough .callout-title, 
+.block-language-ct .callout-title {
   padding: var(--callout-title-padding);
 }
 
-.block-language-comethrough .callout-content, .block-language-ct .callout-content {  
+.block-language-comethrough .callout-content, 
+.block-language-ct .callout-content {  
   padding: var(--callout-content-padding);    
 }
 
-.block-language-comethrough.error, .block-language-ct.error {
+.callout.block-language-comethrough.error, 
+.callout.block-language-ct.error {
   background-color: rgba(var(--color-red-rgb), 0.1);
+  border-width: var(--border-width);
+  border-color: var(--color-red);
 }
-.block-language-comethrough .callout-title.error, .block-language-ct .callout-title.error {
+
+.callout.block-language-comethrough .callout-title.error, .callout.block-language-comethrough .callout-title.error .svg-icon,
+.callout.block-language-ct .callout-title.error, .callout.block-language-ct .callout-title.error .svg-icon {
   color: var(--color-red);
+}
+
+.block-language-comethrough table, 
+.block-language-ct table {
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+  max-width: 100%;
+  table-layout: auto;
+}
+
+.block-language-ct table th:first-child,
+.block-language-ct table td:first-child {
+  width: 40%; 
+}
+
+.block-language-comethrough td.select-deck-cell, 
+.block-language-ct td.select-deck-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.block-language-comethrough td.select-deck-cell select, 
+.block-language-ct td.select-deck-cell select {
+  flex-grow: 1;
+  background-color: inherit;
+  box-shadow: none;
+  font-style: inherit;
+  font-size: inherit;
+  padding-left: 0;
+  padding-top: 0;
+  padding-bottom: 0; 
+  height: auto;
+}
+
+.block-language-comethrough td.select-deck-cell button,
+.block-language-ct td.select-deck-cell button {
+  padding: 0;
+  height: auto;  
+  width: auto;
+  aspect-ratio: 1 / 1;
+  background-color: inherit;
+  box-shadow: none;
 }

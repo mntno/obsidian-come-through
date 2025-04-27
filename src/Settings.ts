@@ -4,6 +4,7 @@ import { PLUGIN_NAME } from "UIAssistant";
 export interface PluginSettings {	
   uiPrefix: string;
 	hideCardSectionMarker: boolean;
+	hideDeclarationInReadingView: boolean;
 }
 
 export class SettingsManager {
@@ -14,6 +15,7 @@ export class SettingsManager {
 	static readonly DEFAULT_DATA: PluginSettings = {		
     uiPrefix: PLUGIN_NAME,
 		hideCardSectionMarker: false,
+		hideDeclarationInReadingView: false,
 	};
 
 	static readonly SETTING_NAME = {
