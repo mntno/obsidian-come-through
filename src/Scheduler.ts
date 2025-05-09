@@ -42,9 +42,9 @@ export class Scheduler {
 
   /**
    * Get the next review item from {@link cards}.
-   * 
-   * @param cards 
-   * @param reviewDate 
+   *
+   * @param cards
+   * @param reviewDate
    * @returns `null` if there is noting to review at {@link reviewDate}.
    */
   public getNextItem(cards: CardIDDataTuple[], reviewDate: Date): {
@@ -52,53 +52,23 @@ export class Scheduler {
     statistics: StatisticsData;
   } | null {
 
-    let nextItem: DataItem | null = null;
-
     const items = cards.map<DataItem>(i => ({
       id: i.id,
       card: Scheduler.asCard(i.data.s)
     }));
 
-    // Find the latest item that's been reviewed / rated.    
-    const lastReviewedItem = items
-      .sort(Scheduler.Comparer.sortByLastReviewDateDesc)
-      .find(p => p.card.last_review !== undefined);
+		const nextItem = items
+			.sort(Scheduler.Comparer.sortByLastReviewDateDesc)
+			.filter(i => this.isCardDue(i.card, reviewDate)).first();
 
-    if (lastReviewedItem) {
-      console.assert(lastReviewedItem.card.last_review && Scheduler.isDateLater(lastReviewedItem.card.last_review, new Date()), "Expected last review date to be in the past.");
-
-      const groupedByStateSortedByDueDate = this.groupItemsByState(
-        items.sort(Scheduler.Comparer.sortDueDateAsc),
-        true);
-
-      const nextState = this.getNextStateToUse(
-        reviewDate,
-        lastReviewedItem.card.state,
-        groupedByStateSortedByDueDate);
-
-      const itemsInState = groupedByStateSortedByDueDate[nextState];
-
-      if (itemsInState.length > 1) {
-        nextItem = itemsInState.filter(i => i !== lastReviewedItem).first() ?? null;
-      }
-      else if (itemsInState.length == 1) {
-        nextItem = itemsInState[0];
-        if (nextItem === lastReviewedItem && !this.isCardDue(lastReviewedItem.card, reviewDate))
-          nextItem = null;
-      }
-    }
-    else {
-      nextItem = items.sort(Scheduler.Comparer.newest).first() ?? null;
-    }
-
-    return nextItem ? { id: nextItem.id, statistics: Scheduler.asStatistics(nextItem.card) } : null;
+		return nextItem ? { id: nextItem.id, statistics: Scheduler.asStatistics(nextItem.card) } : null;
   }
 
   //#region
 
   /**
-   * 
-   * @param lastState 
+   *
+   * @param lastState
    * @param groupedByStateSortedByDueDate Cards with {@link State.Relearning} are expected to be merged with {@link State.Learning}.
    * @returns If {@link State.Learning} is returned, cards in {@link State.Relearning} state may also be used.
    */
@@ -106,7 +76,7 @@ export class Scheduler {
     id: FullID;
     card: Card;
   }[]>): State {
-    
+
     const hasNewItems = groupedByStateSortedByDueDate[State.New].length > 0;
     const hasLearningItems = groupedByStateSortedByDueDate[State.Learning].length > 0;
     const hasRelearningItems = groupedByStateSortedByDueDate[State.Relearning].length > 0;
@@ -147,10 +117,10 @@ export class Scheduler {
 
     // If next state is learning/relearning and there are cards in those states due, go ahead.
     // The first card in the array is expected to be due next.
-    if (nextState === State.Learning && hasLearningItems && this.isCardDue(groupedByStateSortedByDueDate[State.Learning][0].card, date)) {      
+    if (nextState === State.Learning && hasLearningItems && this.isCardDue(groupedByStateSortedByDueDate[State.Learning][0].card, date)) {
       return State.Learning;
     }
-    else {      
+    else {
       if (!hasNewItems)
         return State.Review
       else if (!hasReviewItems)
@@ -160,7 +130,7 @@ export class Scheduler {
     }
   }
 
-  private groupItemsByState(items: DataItem[], groupRelearningAsLearning: boolean) {
+  private groupItemsByState(items: DataItem[], groupRelearningAsLearning: boolean, excludeItem?: DataItem) {
 
     const grouped: Record<State, DataItem[]> = {
       [State.New]: [],
@@ -170,6 +140,8 @@ export class Scheduler {
     };
 
     for (const item of items) {
+			if (excludeItem && excludeItem.id.isEqual(item.id))
+				continue;
       if (groupRelearningAsLearning && item.card.state === State.Relearning)
         grouped[State.Learning].push(item);
       else
@@ -200,9 +172,9 @@ export class Scheduler {
   //#region
 
   /**
-   * @param card 
+   * @param card
    * @param date The {@link Date} to compare against. If later than {@link card}, then the latter is due.
-   * @returns 
+   * @returns
    */
   public isCardDue(card: Card, date: Date) {
     return Scheduler.isDateLater(card.due, date);
@@ -213,9 +185,9 @@ export class Scheduler {
   }
 
   /**
-   * 
-   * @param date 
-   * @param compareDate 
+   *
+   * @param date
+   * @param compareDate
    * @returns `true` if {@link compareDate} is later than {@link date}.
    */
   public static isDateLater(date: Date | string, compareDate: Date = new Date()): boolean {
@@ -236,10 +208,10 @@ export class Scheduler {
 
     /**
      * Sort by last reviewed.
-     * 
-     * Sort by the date an item was latest reviewed descending, 
+     *
+     * Sort by the date an item was latest reviewed descending,
      * i.e., the item with the latest last review date will be sorted first.
-     * 
+     *
      * Items without a last review date will be sorted last as they have not been reviewed.
      */
     public static sortByLastReviewDateDesc(a: DataItem, b: DataItem): number {
@@ -271,7 +243,7 @@ export class Scheduler {
     public static newest(a: DataItem, b: DataItem): number {
 
       if (a.card.state == State.New && b.card.state == State.New)
-        return this.sortDueDateAsc(a, b);
+        return Scheduler.Comparer.sortDueDateAsc(a, b);
       if (a.card.state == State.New && b.card.state != State.New)
         return 1;
       if (a.card.state != State.New && b.card.state == State.New)
@@ -280,13 +252,13 @@ export class Scheduler {
       const aIsLearningOrRelearning = a.card.state == State.Learning || a.card.state == State.Relearning;
       const bIsLearningOrRelearning = b.card.state == State.Learning || b.card.state == State.Relearning;
       if (aIsLearningOrRelearning && bIsLearningOrRelearning)
-        return this.sortDueDateAsc(a, b);
+        return Scheduler.Comparer.sortDueDateAsc(a, b);
       if (aIsLearningOrRelearning && !bIsLearningOrRelearning)
         return 1;
       if (!aIsLearningOrRelearning && bIsLearningOrRelearning)
         return -1;
 
-      return this.sortDueDateAsc(a, b);
+      return Scheduler.Comparer.sortDueDateAsc(a, b);
     }
   }
 

@@ -1,12 +1,12 @@
 import { FileParser, ParsedCard } from "FileParser";
-import { FullID } from "FullID";
+import { DeckID, FullID } from "FullID";
 import { App, Component, ItemView, Keymap, KeymapEventListener, MarkdownRenderer, Menu, Scope, setIcon, setTooltip, TFile, ViewStateResult, WorkspaceLeaf } from "obsidian";
 import { Scheduler } from "Scheduler";
 import { SettingsManager } from "Settings";
-import { DeckID, DeckIDDataTuple, DataStore, StatisticsData } from "DataStore";
+import { DeckIDDataTuple, DataStore, StatisticsData } from "DataStore";
 import { Grade, Rating, show_diff_message, State, TypeConvert } from "ts-fsrs";
 import { CARD_BACK_ICON as BACK_ICON, PLUGIN_ICON, CARD_FRONT_ICON as FRONT_ICON, UIAssistant } from "UIAssistant";
-import { ViewAssistant } from "ViewAssistant";
+import { ViewAssistant } from "views/ViewAssistant";
 
 export interface IReviewViewState {
   deckID?: DeckID;
@@ -52,7 +52,7 @@ export class ReviewView extends ItemView {
     //#endregion
   }
 
-  //#region 
+  //#region
 
   getIcon() {
     return PLUGIN_ICON;
@@ -142,14 +142,14 @@ export class ReviewView extends ItemView {
 
   //#endregion
 
-  /** 
+  /**
    * @returns The {@link TFile} where the currently displayed side is declared, `undefined` if there's no side dislayed, `null` if the file couldn't be found.
    */
   private sourceFile(): TFile | null | undefined {
     return this.currentCard && this.app.vault.getFileByPath(this.showBackSide ? this.currentCard.backID.noteID : this.currentCard.frontID.noteID);
   }
 
-  //#region 
+  //#region
 
   private deck?: DeckIDDataTuple;
   private showMetadata = false;
@@ -170,7 +170,7 @@ export class ReviewView extends ItemView {
   private frontContainer: HTMLDivElement;
   /** Where the back side's DOM is appened to. */
   private backContainer: HTMLDivElement;
-  
+
   private markdownRenderComponent?: Component;
 
   private ratingButtonsContainer?: HTMLDivElement;
@@ -190,7 +190,7 @@ export class ReviewView extends ItemView {
     }
 
     this.reviewDate = new Date();
-    this.reviewedItem = this.scheduler.getNextItem(cards, this.reviewDate); // Not necessarily deterministic.    
+    this.reviewedItem = this.scheduler.getNextItem(cards, this.reviewDate); // Not necessarily deterministic.
 
     if (!this.reviewedItem) {
       this.markdownViewRootEl.createEl("span", { text: `No more cards at the moment. All ${cards.length} cards ${this.deck ? `under ${this.deck.data.n}` : "in this vault"} are done.`});
@@ -301,8 +301,8 @@ export class ReviewView extends ItemView {
   private renderMetadata() {
     if (!this.currentCard || !this.reviewedItem)
       return;
-    
-    const stats = this.reviewedItem.statistics;    
+
+    const stats = this.reviewedItem.statistics;
 
     const el = this.markdownViewRootEl.createDiv({ cls: "statistics" });
     el.createEl("span", { text: `IDs: ${this.currentCard.frontID} / ${this.currentCard.backID}` });
@@ -318,7 +318,7 @@ export class ReviewView extends ItemView {
     el.createEl("span", { text: `Lapses: ${stats.l}` });
   }
 
-  private readonly timeUnit = [' second', ' min', ' hour', ' day', ' month', ' year'];
+  private readonly timeUnit = [' sec', ' min', ' hours', ' days', ' months', ' years'];
 
   //#endregion
 
@@ -363,4 +363,3 @@ export class ReviewView extends ItemView {
     }
   }
 }
-

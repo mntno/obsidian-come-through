@@ -1,16 +1,16 @@
-import { SelectDeckModal } from "SelectDeckModal";
-import { DeclarationBlock } from 'DeclarationBlock';
+import { SelectDeckModal } from "modals/SelectDeckModal";
 import { DeclarationManager } from 'DeclarationManager';
 import { FileParser } from 'FileParser';
 import { FullID } from 'FullID';
 import { Keymap, MarkdownPostProcessorContext, PaneType, Plugin, TFile } from 'obsidian';
-import { ReviewView } from 'ReviewView';
+import { ReviewView } from 'views/ReviewView';
 import { Scheduler } from 'Scheduler';
 import { PluginSettings, SettingsManager, SettingTab } from 'Settings';
 import { DataStore, DataStoreRoot } from 'DataStore';
 import { PLUGIN_ICON, UIAssistant } from 'UIAssistant';
-import { DecksView } from "DecksView";
+import { DecksView } from "views/DecksView";
 import { asNoteID } from "TypeAssistant";
+import { DeclarationBase } from "declarations/Declaration";
 
 interface PluginData {
 	settings: PluginSettings;
@@ -26,9 +26,9 @@ export default class ComeThroughPlugin extends Plugin {
 
 	async onload() {
 
-		//#region 
+		//#region
 
-		const data = await this.loadData(); // Returns `null` if file doesn't exist.		
+		const data = await this.loadData(); // Returns `null` if file doesn't exist.
 		this.data = {
 			...{},
 			...{
@@ -57,13 +57,13 @@ export default class ComeThroughPlugin extends Plugin {
 		this.app.workspace.onLayoutReady(() => this.registerEvents());
 
 		this.registerMarkdownCodeBlockProcessor(
-			DeclarationBlock.LANGUAGE,
+			DeclarationBase.LANGUAGE,
 			(source, el, ctx) => this.processCodeBlock(source, el, ctx),
 			undefined
 		);
 
 		this.registerMarkdownCodeBlockProcessor(
-			DeclarationBlock.LANGUAGE_SHORT,
+			DeclarationBase.LANGUAGE_SHORT,
 			(source, el, ctx) => this.processCodeBlock(source, el, ctx),
 			undefined
 		);
@@ -170,11 +170,11 @@ export default class ComeThroughPlugin extends Plugin {
 		const allDecks = this.dataStore.getAllDecks();
 		if (allDecks.length) {
 			const modal = new SelectDeckModal(
-				this.app, 
-				this.dataStore, 
-				[...[UIAssistant.allDecksOptionItem()], ...allDecks], 				
+				this.app,
+				this.dataStore,
+				[...[UIAssistant.allDecksOptionItem()], ...allDecks],
 				async (deck, evt) => {
-				await openView(Keymap.isModEvent(evt), { deckID: deck.id });
+					await openView(Keymap.isModEvent(evt), { deckID: deck.id });
 			});
 			modal.setPlaceholder("Select deck to review");
 			modal.open();
@@ -193,7 +193,7 @@ export default class ComeThroughPlugin extends Plugin {
 		this.ui.displayNotice(info, { prefix: false, preventDismissal: true });
 	}
 
-	//#region 
+	//#region
 
 	private async savePluginData() {
 		await this.saveData(this.data);

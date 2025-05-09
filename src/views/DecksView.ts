@@ -1,7 +1,8 @@
-import { DeckModal } from "DeckModal";
+import { DeckModal } from "modals/DeckModal";
 import { ItemView, Menu, setIcon, setTooltip, WorkspaceLeaf } from "obsidian";
-import { DeckID, DataStore } from "DataStore";
-import { ViewAssistant } from "ViewAssistant";
+import { DataStore } from "DataStore";
+import { ViewAssistant } from "views/ViewAssistant";
+import { DeckID } from "FullID";
 
 
 export class DecksView extends ItemView {
@@ -16,7 +17,7 @@ export class DecksView extends ItemView {
     this.navigation = true;
   }
 
-  //#region 
+  //#region
 
   getIcon() {
     return "file-stack";
@@ -47,7 +48,7 @@ export class DecksView extends ItemView {
     const numberOfCardsInDefaultDeck = allCards.filter(this.data.filter.cardsWithoutDeck).length;
 
     //markdownViewRootEl.createEl("h1", { text: "Decks" });
- 
+
     markdownViewRootEl.createDiv({
       text: `There are ${allCards.length - numberOfCardsInDefaultDeck} cards in a total of ${decks.length} decks.`
     });
@@ -57,7 +58,7 @@ export class DecksView extends ItemView {
         text: `${(numberOfCardsInDefaultDeck == 1 ? "1 card is": `${numberOfCardsInDefaultDeck} cards are`)} not assigned to any deck.`
       });
     }
-    
+
     const table = markdownViewRootEl.createEl("table");
     const header = table.createEl("thead");
     header.createEl("tr", {}, (headerRow) => {
@@ -90,7 +91,7 @@ export class DecksView extends ItemView {
           .map(d => d.n)
           .join(", ")
       });
-      rowID.createEl("td", {}, (td) => {    
+      rowID.createEl("td", {}, (td) => {
         const ellipsisButton = td.createEl("button", {}, (button) => {
 
           this.registerDomEvent(button, 'click', (evt: MouseEvent) => {

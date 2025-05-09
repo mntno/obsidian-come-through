@@ -33,9 +33,8 @@ export class FullID implements FullID {
   //#region Parse string
 
   /**
-   * 
-   * @param inputString 
-   * @returns 
+   * @param inputString
+   * @returns
    * @throws `Error` if requirements failed.
    */
   public static fromString(inputString: string): FullID {
@@ -117,9 +116,14 @@ export class FullID implements FullID {
     return this.cardID!;
   }
 
+  public throwIfNoNoteID() {
+    if (!this.noteID)
+      throw new Error(`Invalid ID: no note ID`);
+  }
+
   public throwIfNoCardID() {
     if (!this.cardID)
-      throw new Error(`Full ID "${this}" is missing card ID.`);
+      throw new Error(`Invalid ID "${this}": no card ID.`);
   }
 
   public get cardSide(): string | undefined {
@@ -159,10 +163,11 @@ export class FullID implements FullID {
 
   /**
    * Returns `false` if either instance's {@link cardID} is falsy.
-   * @param other 
-   * @returns 
+   * @param other
+   * @param sideInsensitive If set to `true`, will consider both IDs equal even if their sides are different.
+   * @returns
    */
-  public isEqual(other: FullID, sideInsensitive: boolean) {
+  public isEqual(other: FullID, sideInsensitive: boolean = false) {
     return this.isNoteEqual(other) &&
       this.isCardEqual(other) &&
       (sideInsensitive ? true : this.isFrontSide == other.isFrontSide);
@@ -177,10 +182,29 @@ export class FullID implements FullID {
   }
 
   public hasNoteID(noteID: NoteID) {
-    return this.noteID === noteID.trim();
+    return this.noteID === noteID;
   }
 
   public hasCardID(cardID: CardID) {
     return this.cardID === cardID.trim().toLowerCase();
   }
+}
+
+export type DeckID = string;
+
+export class DeckableFullID extends FullID {
+
+	public readonly deckIDs: DeckID[];
+
+	public constructor(noteID: NoteID, cardID: CardID, isFrontSide: boolean, deckIDs: DeckID[]) {
+		super(noteID, cardID, isFrontSide ? "f" : "b");
+		this.deckIDs = deckIDs;
+	}
+
+	public isDecksEqual(deckIDs: DeckID[]) {
+		return (
+			this.deckIDs.length === deckIDs.length &&
+			this.deckIDs.every((deck, index) => deck === deckIDs[index])
+		);
+	}
 }

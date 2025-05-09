@@ -1,6 +1,7 @@
 import { App, ButtonComponent, Modal, Setting } from "obsidian";
-import { DeckEditor, DeckID, DeckIDDataTuple, DataStore } from "DataStore";
+import { DeckEditor, DeckIDDataTuple, DataStore } from "DataStore";
 import { UIAssistant } from "UIAssistant";
+import { DeckID } from "FullID";
 
 
 export class DeckModal extends Modal {
@@ -49,8 +50,8 @@ export class DeckModal extends Modal {
       .addDropdown((component) => {
 
         component.addOption(UIAssistant.DECK_ID_UNDEFINED, "None");
-        for (const deck of this.data.getAllDecks().filter(d => d.id !== this.idToEdit))          
-            component.addOption(deck.id, deck.data.n);        
+        for (const deck of this.data.getAllDecks().filter(d => d.id !== this.idToEdit))
+            component.addOption(deck.id, deck.data.n);
         component.setValue(this.parentDeckID ?? UIAssistant.DECK_ID_UNDEFINED);
 
         component.onChange((value) => {

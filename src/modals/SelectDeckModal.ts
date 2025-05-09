@@ -22,8 +22,8 @@ export class SelectDeckModal extends SuggestModal<DeckIDDataTuple> {
   }
 
   renderSuggestion(value: DeckIDDataTuple, el: HTMLElement): void {
-    const numberOfCards = this.data.getAllCardsForDeck(value.id).length;    
-    el.createEl('div', { text: `${value.data.n}` }).createEl('small', { text: ` (${numberOfCards})` });    
+    const numberOfCards = this.data.getAllCardsForDeck(value.id).length;
+    el.createEl('div', { text: `${value.data.n}` }).createEl('small', { text: ` (${numberOfCards})` });
     el.createEl('small', { text: value.data.p.length > 0 ? this.descendants(value) : "" });
   }
 
@@ -43,5 +43,4 @@ export class SelectDeckModal extends SuggestModal<DeckIDDataTuple> {
 
     return "";
   }
-
 }
