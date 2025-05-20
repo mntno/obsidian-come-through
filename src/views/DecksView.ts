@@ -7,131 +7,142 @@ import { DeckID } from "FullID";
 
 export class DecksView extends ItemView {
 
-  public static readonly TYPE = "come-through-view-decks";
+	public static readonly TYPE = "come-through-view-decks";
+	private readonly viewAssistant = new ViewAssistant();
 
-  constructor(
-    leaf: WorkspaceLeaf,
-    private readonly data: DataStore) {
-    super(leaf);
+	constructor(
+		leaf: WorkspaceLeaf,
+		private readonly data: DataStore) {
+		super(leaf);
 
-    this.navigation = true;
-  }
+		this.navigation = true;
+	}
 
-  //#region
+	//#region
 
-  getIcon() {
-    return "file-stack";
-  }
+	getIcon() {
+		return "file-stack";
+	}
 
-  getViewType(): string {
-    return DecksView.TYPE;
-  }
+	getViewType(): string {
+		return DecksView.TYPE;
+	}
 
-  getDisplayText(): string {
-    return "Decks";
-  }
+	getDisplayText(): string {
+		return "Decks";
+	}
 
-  protected async onOpen() {
-    await this.refreshView();
-  }
+	protected async onOpen() {
 
-  //#endregion
+		this.addAction("refresh-cw", "Reload", () => {
+			this.refreshView();
+		});
 
-  private async refreshView() {
-    const container = this.contentEl;
-    container.empty();
-    const markdownViewRootEl = ViewAssistant.createMarkdownRoot(container);
-    ViewAssistant.empty(markdownViewRootEl);
+		this.contentEl.empty();
+		this.viewAssistant.init(this.contentEl);
 
-    const allCards = this.data.getAllCards();
-    const decks = this.data.getAllDecks();
-    const numberOfCardsInDefaultDeck = allCards.filter(this.data.filter.cardsWithoutDeck).length;
+		await this.refreshView();
+	}
 
-    //markdownViewRootEl.createEl("h1", { text: "Decks" });
+	protected async onClose() {
+		this.viewAssistant.deinit();
+	}
 
-    markdownViewRootEl.createDiv({
-      text: `There are ${allCards.length - numberOfCardsInDefaultDeck} cards in a total of ${decks.length} decks.`
-    });
+	//#endregion
 
-    if (numberOfCardsInDefaultDeck > 0) {
-      markdownViewRootEl.createDiv({
-        text: `${(numberOfCardsInDefaultDeck == 1 ? "1 card is": `${numberOfCardsInDefaultDeck} cards are`)} not assigned to any deck.`
-      });
-    }
+	private async refreshView() {
 
-    const table = markdownViewRootEl.createEl("table");
-    const header = table.createEl("thead");
-    header.createEl("tr", {}, (headerRow) => {
-      headerRow.createEl("th", { text: "Name" });
-      headerRow.createEl("th", { text: "Cards" });
-      headerRow.createEl("th", { text: "Parent deck" });
-      headerRow.createEl("th", { text: "" }, (th) => {
-        th.createEl("button", { text: "Add" }, (button) => {
-          setIcon(button, "plus");
-          setTooltip(button, "Add new deck");
-          this.registerDomEvent(button, "click", this.add.bind(this));
-        });
-      });
-    });
+		this.viewAssistant.empty();
 
-    const body = table.createEl("tbody");
+		const allCards = this.data.getAllCards();
+		const decks = this.data.getAllDecks();
+		const numberOfCardsInDefaultDeck = allCards.filter(this.data.filter.cardsWithoutDeck).length;
 
-    for (const deck of decks) {
-      const numberOfCardsInDeck = allCards.filter(card => this.data.filter.cardsInDeck(deck.id, card)).length;
-      const rowID = body.createEl("tr");
+		//this.viewAssistant.createH1({ text: "Decks" });
 
-      rowID.createEl("td", { text: deck.data.n });
-      rowID.createEl("td", {
-        text: numberOfCardsInDeck.toString()
-      });
-      rowID.createEl("td", {
-        text: deck.data.p.length == 0 ? "None" : deck.data.p
-          .map(parentID => this.data.getDeck(parentID))
-          .filter(d => d !== null)
-          .map(d => d.n)
-          .join(", ")
-      });
-      rowID.createEl("td", {}, (td) => {
-        const ellipsisButton = td.createEl("button", {}, (button) => {
+		this.viewAssistant.createPara({
+			text: `There are ${allCards.length - numberOfCardsInDefaultDeck} cards in a total of ${decks.length} decks.`
+		});
 
-          this.registerDomEvent(button, 'click', (evt: MouseEvent) => {
-            const menu = new Menu();
-            menu.addItem((item) => {
-              item.setTitle("Edit");
-              item.setIcon("pen");
-              item.onClick(this.edit.bind(this, deck.id));
-            });
+		if (numberOfCardsInDefaultDeck > 0) {
+			this.viewAssistant.createPara({
+				text: `${(numberOfCardsInDefaultDeck == 1 ? "1 card is" : `${numberOfCardsInDefaultDeck} cards are`)} not assigned to any deck.`
+			});
+		}
 
-            menu.addItem((item) => {
-              item.setTitle("Delete")
-              item.setIcon("trash")
-              item.setDisabled(numberOfCardsInDeck > 0)
-              item.onClick(this.delete.bind(this, deck.id));
-            });
+		const table = this.viewAssistant.createTable()
+		const header = table.createEl("thead");
+		header.createEl("tr", {}, (headerRow) => {
+			headerRow.createEl("th", { text: "Name" });
+			headerRow.createEl("th", { text: "Cards" });
+			headerRow.createEl("th", { text: "Parent deck" });
+			headerRow.createEl("th", { text: "" }, (th) => {
+				th.createEl("button", { text: "Add" }, (button) => {
+					setIcon(button, "plus");
+					setTooltip(button, "Add new deck");
+					this.registerDomEvent(button, "click", this.add.bind(this));
+				});
+			});
+		});
 
-            menu.showAtMouseEvent(evt);
-          });
-        });
-        setIcon(ellipsisButton, "ellipsis-vertical");
-      });
-    }
-  }
+		const body = table.createEl("tbody");
 
-  private add() {
-    new DeckModal(this.app, this.data, (_) => {
-      this.refreshView();
-    }).open();
-  }
+		for (const deck of decks) {
+			const numberOfCardsInDeck = allCards.filter(card => this.data.filter.cardsInDeck(deck.id, card)).length;
+			const rowID = body.createEl("tr");
 
-  private edit(deckID: DeckID) {
-    new DeckModal(this.app, this.data, (_) => {
-      this.refreshView();
-    }, deckID).open();
-  }
+			rowID.createEl("td", { text: deck.data.n });
+			rowID.createEl("td", {
+				text: numberOfCardsInDeck.toString()
+			});
+			rowID.createEl("td", {
+				text: deck.data.p.length == 0 ? "None" : deck.data.p
+					.map(parentID => this.data.getDeck(parentID))
+					.filter(d => d !== null)
+					.map(d => d.n)
+					.join(", ")
+			});
+			rowID.createEl("td", {}, (td) => {
+				const ellipsisButton = td.createEl("button", {}, (button) => {
 
-  private async delete(deckID: DeckID) {
-    this.data.deleteDeck(deckID, undefined, true);
-    await this.data.save();
-    this.refreshView();
-  }
+					this.registerDomEvent(button, 'click', (evt: MouseEvent) => {
+						const menu = new Menu();
+						menu.addItem((item) => {
+							item.setTitle("Edit");
+							item.setIcon("pen");
+							item.onClick(this.edit.bind(this, deck.id));
+						});
+
+						menu.addItem((item) => {
+							item.setTitle("Delete")
+							item.setIcon("trash")
+							item.setDisabled(numberOfCardsInDeck > 0)
+							item.onClick(this.delete.bind(this, deck.id));
+						});
+
+						menu.showAtMouseEvent(evt);
+					});
+				});
+				setIcon(ellipsisButton, "ellipsis-vertical");
+			});
+		}
+	}
+
+	private add() {
+		new DeckModal(this.app, this.data, (_) => {
+			this.refreshView();
+		}).open();
+	}
+
+	private edit(deckID: DeckID) {
+		new DeckModal(this.app, this.data, (_) => {
+			this.refreshView();
+		}, deckID).open();
+	}
+
+	private async delete(deckID: DeckID) {
+		this.data.deleteDeck(deckID, undefined, true);
+		await this.data.save();
+		this.refreshView();
+	}
 }

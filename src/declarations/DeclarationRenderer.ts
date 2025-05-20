@@ -120,7 +120,7 @@ export class DeclarationRenderer extends MarkdownRenderChild {
 				return;
 			}
 
-			this.setTitle("Alternate Headings");
+			this.setTitle("Alternate headings");
 			this.addParagraph(`Automatically generate a card for every other heading ${declaration.level} levels below this one, where the heading in between is the back side of the heading that came before.`);
 
 			const contentContainer = this.contentContainerEl;
@@ -145,7 +145,7 @@ export class DeclarationRenderer extends MarkdownRenderChild {
 		declaration: IncompleteDeclarationSpecification,
 		onDomEvent: DeclarationChangedEvent) {
 
-		this.setTitle("Flashcard Declaration");
+		this.setTitle("Flashcard declaration");
 
 		const contentContainer = this.contentContainerEl;
 		const table = contentContainer.createEl("table");
