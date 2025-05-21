@@ -1,4 +1,4 @@
-import { CardDeclaration, DeclarationSpecification } from "declarations/CardDeclaration";
+import { CardDeclaration, CardDeclarable } from "declarations/CardDeclaration";
 import { DeckableFullID, DeckID, FullID, NoteID } from "FullID";
 import { TFile } from "obsidian";
 
@@ -10,10 +10,14 @@ export function asNoteID(value: TFile | string): NoteID {
 	throw new TypeError(`${value}`);
 }
 
-export function fullIDFromDeclaration(declaration: DeclarationSpecification, noteID: NoteID): DeckableFullID | FullID {
+export function fullIDFromDeclaration(declaration: CardDeclarable, noteID: NoteID): DeckableFullID | FullID {
 	return declaration.deckID
 		? new DeckableFullID(noteID, declaration.id, CardDeclaration.isFrontSide(declaration, true), [declaration.deckID])
 		: FullID.create(noteID, declaration.id, CardDeclaration.isFrontSide(declaration, true));
+}
+
+export function isObject(value: any) {
+	return typeof value === "object" && value !== null; // `null` is an object
 }
 
 export function isString(value: any) {

@@ -1,4 +1,4 @@
-import { FileParser, ParsedCard } from "FileParser";
+import { ContentParser, ParsedCard } from "ContentParser";
 import { DeckID, FullID } from "FullID";
 import { App, Component, ItemView, Keymap, KeymapEventListener, MarkdownRenderer, Menu, Scope, setIcon, setTooltip, TFile, ViewStateResult, WorkspaceLeaf } from "obsidian";
 import { Scheduler } from "Scheduler";
@@ -7,6 +7,7 @@ import { DeckIDDataTuple, DataStore, StatisticsData } from "DataStore";
 import { Grade, Rating, show_diff_message, State, TypeConvert } from "ts-fsrs";
 import { CARD_BACK_ICON as BACK_ICON, PLUGIN_ICON, CARD_FRONT_ICON as FRONT_ICON, UIAssistant } from "UIAssistant";
 import { ViewAssistant } from "views/ViewAssistant";
+import { InternalApi } from "InternalApi";
 
 export interface IReviewViewState {
 	deckID?: DeckID;
@@ -43,11 +44,15 @@ export class ReviewView extends ItemView {
 
 		this.scope.register(null, " ", toggleFrontBackEventListener);
 		this.scope.register(null, "Enter", toggleFrontBackEventListener);
-		this.scope.register(["Mod"], "E", toggleFrontBackEventListener);
+		if (!InternalApi.addEventHandlerToExistingKeyMap(this.app, this.scope, "markdown:toggle-preview", toggleFrontBackEventListener))
+			this.scope.register(["Mod"], "E", toggleFrontBackEventListener);
+
 		this.scope.register(null, "1", () => rate(Rating.Again));
 		this.scope.register(null, "2", () => rate(Rating.Hard));
 		this.scope.register(null, "3", () => rate(Rating.Good));
 		this.scope.register(null, "4", () => rate(Rating.Easy));
+
+		this.scope.register(["Mod"], "R", this.refreshView);
 
 		//#endregion
 	}
@@ -94,17 +99,14 @@ export class ReviewView extends ItemView {
 			onClick: evt => {
 				this.showMetadata = !this.showMetadata;
 				this.app.workspace.requestSaveLayout();
-				this.refreshView();
+				this.render();
 			}
 		});
 	}
 
 	protected async onOpen() {
-
-		this.addAction("refresh-cw", "Reload", () => {
-			this.showBackSide = false;
-			this.refreshView();
-		});
+		this.data.registerOnChangedCallback(this.onDataChangedCallback);
+		this.addAction("refresh-cw", "Reload", this.refreshView);
 
 		this.toggleAnswerButton = this.addAction(
 			this.showBackSide ? FRONT_ICON : BACK_ICON,
@@ -119,6 +121,7 @@ export class ReviewView extends ItemView {
 	}
 
 	protected async onClose() {
+		this.data.unregisterOnChangedCallback(this.onDataChangedCallback);
 		this.viewAssistant.deinit();
 		await this.recycleMarkdownResources();
 	}
@@ -138,7 +141,7 @@ export class ReviewView extends ItemView {
 		} : undefined;
 		this.showMetadata = state.showMetadata;
 
-		await this.refreshView();
+		await this.render();
 		await super.setState(state, result);
 	}
 
@@ -150,6 +153,15 @@ export class ReviewView extends ItemView {
 	private sourceFile(): TFile | null | undefined {
 		return this.currentCard && this.app.vault.getFileByPath(this.showBackSide ? this.currentCard.backID.noteID : this.currentCard.frontID.noteID);
 	}
+
+	private onDataChangedCallback = () => {
+		this.refreshView();
+	};
+
+	private refreshView = () => {
+		this.showBackSide = false;
+		this.render();
+	};
 
 	//#region
 
@@ -177,7 +189,7 @@ export class ReviewView extends ItemView {
 	private ratingButtonsContainer?: HTMLDivElement;
 	private toggleAnswerButton?: HTMLElement;
 
-	private async refreshView() {
+	private async render() {
 		this.viewAssistant.empty();
 
 		const cards = this.data.getAllCardsForDeck(this.deck?.id);
@@ -203,7 +215,7 @@ export class ReviewView extends ItemView {
 		if (this.reviewedItem.id.cardID === undefined)
 			return;
 
-		const maybeCompleteCard = await FileParser.getCard(this.reviewedItem.id, this.app, {
+		const maybeCompleteCard = await ContentParser.getCard(this.reviewedItem.id, this.app, {
 			contentRead: {
 				hideCardSectionMarker: this.settingsManager.settings.hideCardSectionMarker
 			},
@@ -212,7 +224,7 @@ export class ReviewView extends ItemView {
 
 		if (maybeCompleteCard.complete === null) {
 			if (maybeCompleteCard.complete === null && maybeCompleteCard.incomplete === null)
-				this.viewAssistant.createPara({ text: `${this.reviewedItem.id.toString()} not found in index.` });
+				this.viewAssistant.createPara({ text: `Could not find content of "${this.reviewedItem.id.cardID}" in "${this.reviewedItem.id.noteID}".` });
 			if (maybeCompleteCard.incomplete !== null)
 				this.viewAssistant.createPara({ text: `"${this.reviewedItem.id.toString()}" does not have a ${!maybeCompleteCard.incomplete.backMarkdown ? "back" : "front"} side.` });
 			this.toggleAnswerButton?.hide();
@@ -264,10 +276,10 @@ export class ReviewView extends ItemView {
 
 	private async rate(id: FullID, grade: Grade) {
 		this.scheduler.rateItem(id, grade, this.reviewDate);
-		await this.data.save();
-		this.showBackSide = false;
 		this.ui.displayNotice(`You rated ${Rating[grade]}`);
-		this.refreshView();
+
+		await this.data.save(); // This will trigger a refresh
+		//this.refreshView();
 	}
 
 	private toggleAnswer() {

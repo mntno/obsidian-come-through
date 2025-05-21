@@ -1,15 +1,9 @@
 import { parseYaml, stringifyYaml } from "obsidian";
 
-export interface DeclarationRange {
-	start: number,
-	end: number,
-}
+export interface Declarable {}
 
-export interface Declaration {
-}
-
-export interface DeckableDeclaration extends Declaration {
-	deckID: string | undefined;
+export interface DeckableDeclarable extends Declarable {
+	deckID: string | null;
 }
 
 const DeckableUserKeyName = {
@@ -20,12 +14,22 @@ const DeckablePropertyName = {
 	DECK_ID: "deckID",
 };
 
+/** Locates the portion of a string that contains the raw declaration string. */
+export interface DeclarationRange {
+	start: number,
+	end: number,
+}
+
 export type YamlParseErrorCallback = (error: Error) => void;
 
-export abstract class DeclarationBase {
+export abstract class Declaration {
 
-	public static readonly LANGUAGE = "comethrough";
-	public static readonly LANGUAGE_SHORT = "ct";
+	private static readonly LANGUAGE = "comethrough";
+	private static readonly LANGUAGE_SHORT = "ct";
+
+	public static get supportedCodeBlockLanguages() {
+		return [Declaration.LANGUAGE, Declaration.LANGUAGE_SHORT];
+	}
 
 	protected static slice(source: string, location: DeclarationRange) {
 		return source.slice(location.start, location.end);
@@ -33,7 +37,7 @@ export abstract class DeclarationBase {
 
 	/**
 	 * @param source The code block including the three ticks at the beginning and end.
-	 * @returns The string inside the code block or `null` if {@link source} or code "language" is unexpected.
+	 * @returns The location of the block's content within {@link source} or `null` if {@link source} or code "language" is unexpected.
 	*/
 	protected static contentOfCodeBlock(source: string): DeclarationRange | null {
 		const firstLine = source.split("\n", 1).first();
@@ -52,15 +56,15 @@ export abstract class DeclarationBase {
 	/**
 	* Case insensitive.
 	*
-	* @param source Will be converted to lower case before parsing.
+	* @param yaml Will be converted to lower case before parsing.
 	* @param onParseError
 	* @returns `null` if YAML parsing failed, in which case {@link onParseError} will be invoked.
 	*/
-	public static tryParseAsYaml(source: string, onParseError?: YamlParseErrorCallback) {
+	public static tryParseYaml(yaml: string, onParseError?: YamlParseErrorCallback) {
 		let parsedObject: Record<string, any> | null = null;
 
 		try {
-			parsedObject = parseYaml(source.toLowerCase());
+			parsedObject = parseYaml(yaml.toLowerCase());
 			if (parsedObject)
 				this.fromUserFriendlyKeys(parsedObject);
 		}
@@ -74,7 +78,7 @@ export abstract class DeclarationBase {
 		return parsedObject;
 	}
 
-	public static toString(declaration: Declaration) {
+	public static toString(declaration: Declarable) {
 		this.toUserFriendlyKeys(declaration);
 		return stringifyYaml(declaration);
 	}
@@ -101,12 +105,12 @@ export abstract class DeclarationBase {
 		}
 	}
 
-	public static copyWithDeck<T extends DeckableDeclaration>(declaration: T, deckID: string | undefined): T {
+	public static copyWithDeck<T extends DeckableDeclarable>(declaration: T, deckID: string | null): T {
 		return {
 			...declaration,
 			...{
 				deckID: deckID,
-			} satisfies DeckableDeclaration
+			} satisfies DeckableDeclarable
 		}
 	}
 

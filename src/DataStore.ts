@@ -1,4 +1,5 @@
 import { CardID, FullID, NoteID, DeckID, DeckableFullID } from "FullID";
+import { deepEqual } from 'fast-equals';
 import { asNoteID } from "TypeAssistant";
 import { UniqueID } from "UniqueID";
 
@@ -150,6 +151,9 @@ export class DeckEditor {
 
 //#endregion
 
+/** Use with {@link DataStore.registerOnChangedCallback} */
+export type DataChanged = (data: DataStoreRoot) => void;
+
 export class DataStore {
 
 	public static readonly DEFAULT_DATA: DataStoreRoot = {
@@ -159,9 +163,12 @@ export class DataStore {
 		removed: {}
 	};
 
-	public constructor(
-		private readonly data: DataStoreRoot,
-		private readonly saveData: (data: DataStoreRoot) => Promise<void>) {
+	private data: DataStoreRoot;
+	private readonly saveData: (data: DataStoreRoot) => Promise<void>;
+
+	public constructor(data: DataStoreRoot, saveData: (data: DataStoreRoot) => Promise<void>) {
+		this.data = data;
+		this.saveData = saveData;
 	}
 
 	public cardInfo(id: FullID) {
@@ -732,12 +739,13 @@ export class DataStore {
 
 	//#endregion
 
-	//#region Save
+	//#region Persisting data
 
 	public async save() {
 		if (this._isDataDirty) {
 			await this.saveData(this.data);
 			this._isDataDirty = false;
+			this.triggerDataChanged();
 		}
 	}
 
@@ -745,6 +753,42 @@ export class DataStore {
 		this._isDataDirty = true;
 	}
 	private _isDataDirty = false;
+
+	/**
+	* @param changedData
+	* @param action Called if {@link changedData} is not equal to the current in-memory representation. Call `commit` to confirm changes.
+	*/
+	public onDataChangedExternally(changedData: DataStoreRoot, action: (currentData: DataStoreRoot, commit: () => void) => void) {
+		const currentData = this.data; // Save reference
+		if (!deepEqual(changedData, currentData)) {
+			action(currentData, () => {
+				this.data = changedData;
+				this.triggerDataChanged();
+			});
+		}
+	}
+
+	public registerOnChangedCallback(evt: DataChanged) {
+		if (!this.registeredChangedCallbacks.includes(evt))
+			this.registeredChangedCallbacks.push(evt);
+	}
+
+	public unregisterOnChangedCallback(evt: DataChanged) {
+		this.registeredChangedCallbacks = this.registeredChangedCallbacks.filter(callback => callback !== evt);
+	}
+
+	private triggerDataChanged() {
+		this.registeredChangedCallbacks.forEach(callback => {
+			try {
+				callback(this.data);
+			}
+			catch (error) {
+				console.error("Error executing data changed callback:", error);
+			}
+		});
+	}
+
+	private registeredChangedCallbacks: DataChanged[] = [];
 
 	//#endregion
 

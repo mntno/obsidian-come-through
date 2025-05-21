@@ -33,7 +33,7 @@ export class DecksView extends ItemView {
 	}
 
 	protected async onOpen() {
-
+		this.data.registerOnChangedCallback(this.onDataChangedCallback);
 		this.addAction("refresh-cw", "Reload", () => {
 			this.refreshView();
 		});
@@ -45,10 +45,13 @@ export class DecksView extends ItemView {
 	}
 
 	protected async onClose() {
+		this.data.unregisterOnChangedCallback(this.onDataChangedCallback);
 		this.viewAssistant.deinit();
 	}
 
 	//#endregion
+
+	private onDataChangedCallback = () => this.refreshView();
 
 	private async refreshView() {
 

@@ -1,12 +1,13 @@
 import { DeckIDDataTuple } from "DataStore";
-import { CardDeclaration, IncompleteDeclarationSpecification } from "declarations/CardDeclaration";
+import { CardDeclaration, DefaultableCardDeclarable } from "declarations/CardDeclaration";
 import { MarkdownRenderChild, setIcon } from "obsidian";
 import { PLUGIN_ICON, UIAssistant } from "UIAssistant";
-import { DeclarationCommandAssistant, DeclarationCommandInterface } from "./CommandDeclaration";
-import { DeckableDeclaration, DeclarationBase } from "./Declaration";
+import { CommandDeclarationAssistant, CommandableDeclarable } from "declarations/CommandDeclaration";
+import { DeckableDeclarable, Declaration } from "declarations/Declaration";
+import { AlternateHeadingsAssistant } from "declarations/AlternateHeadings";
 
 export type DeclarationChangedType = "deckAdded" | "deckChanged";
-export type DeclarationChangedEvent = (declaration: DeckableDeclaration, type: DeclarationChangedType, selectEl: HTMLSelectElement) => void;
+export type DeclarationChangedEvent = (declaration: DeckableDeclarable, type: DeclarationChangedType, selectEl: HTMLSelectElement) => void;
 
 interface DataProvider {
 	getAllDecks: () => DeckIDDataTuple[];
@@ -82,13 +83,13 @@ export class DeclarationRenderer extends MarkdownRenderChild {
 
 		this.beginRender();
 
-		const declaration = DeclarationBase.tryParseAsYaml(this.source, error => this.setYamlError(error.message));
+		const declaration = Declaration.tryParseYaml(this.source, error => this.setYamlError(error.message));
 		if (declaration === null)
 			return;
 
-		if (DeclarationCommandAssistant.conforms(declaration)) {
+		if (CommandDeclarationAssistant.conforms(declaration)) {
 
-			if (!DeclarationCommandAssistant.isTypeValid(declaration)) {
+			if (!CommandDeclarationAssistant.isTypeValid(declaration)) {
 				this.setError();
 				this.setTitle("Invalid declaration command");
 				this.addParagraph("Please check the entered values.");
@@ -99,7 +100,7 @@ export class DeclarationRenderer extends MarkdownRenderChild {
 		}
 		else {
 
-			if (!CardDeclaration.conformsToIncompleteDeclarationSpecification(declaration)) {
+			if (!CardDeclaration.conformsToDefaultable(declaration)) {
 				this.setError();
 				this.setTitle("Invalid card declaration");
 				this.addParagraph("Incomplete card declaration.");
@@ -110,10 +111,10 @@ export class DeclarationRenderer extends MarkdownRenderChild {
 		}
 	}
 
-	public renderCommandDeclaration(declaration: DeclarationCommandInterface, onDomEvent: DeclarationChangedEvent) {
-		if (DeclarationCommandAssistant.conformsToAlternateHeadings(declaration)) {
+	public renderCommandDeclaration(declaration: CommandableDeclarable, onDomEvent: DeclarationChangedEvent) {
+		if (AlternateHeadingsAssistant.conforms(declaration)) {
 
-			if (!DeclarationCommandAssistant.isAlternateHeadingsValid(declaration)) {
+			if (!AlternateHeadingsAssistant.isAlternateHeadingsValid(declaration)) {
 				this.setError();
 				this.setTitle("Invalid alternate headings command");
 				this.addParagraph("Please check the entered values.");
@@ -127,22 +128,27 @@ export class DeclarationRenderer extends MarkdownRenderChild {
 			const table = contentContainer.createEl("table");
 			const body = table.createEl("tbody");
 
-			const rowID = body.createEl("tr");
-			rowID.createEl("td", { text: "Levels below this heading" });
-			rowID.createEl("td", { text: declaration.level.toString() });
+			body.createEl("tr", undefined, (el) => {
+				el.createEl("td", { text: "Levels below this heading" });
+				el.createEl("td", { text: declaration.level.toString() });
+			});
+
+			body.createEl("tr", undefined, (el) => {
+				el.createEl("td", { text: "Side delimiter" });
+				el.createEl("td", { text: declaration.delimiter === "heading" ? "The following heading on the same level" : "The first horizontal rule within the heading" });
+			});
 
 			this.createDeckRow(body, declaration, onDomEvent);
 		}
 		else {
 			this.setError();
 			this.setTitle("Unknown declaration command");
-			this.addParagraph(DeclarationBase.toString(declaration));
+			this.addParagraph(Declaration.toString(declaration));
 		}
 	}
 
-
 	public renderCardDeclaration(
-		declaration: IncompleteDeclarationSpecification,
+		declaration: DefaultableCardDeclarable,
 		onDomEvent: DeclarationChangedEvent) {
 
 		this.setTitle("Flashcard declaration");
@@ -164,7 +170,7 @@ export class DeclarationRenderer extends MarkdownRenderChild {
 		}
 	}
 
-	private createDeckRow(body: HTMLTableSectionElement, declaration: DeckableDeclaration, onDomEvent: DeclarationChangedEvent) {
+	private createDeckRow(body: HTMLTableSectionElement, declaration: DeckableDeclarable, onDomEvent: DeclarationChangedEvent) {
 		const rowDeck = body.createEl("tr");
 		rowDeck.createEl("td", { text: "Deck" });
 		const tdDropdown = rowDeck.createEl("td", { cls: "select-deck-cell" });

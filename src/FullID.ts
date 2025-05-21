@@ -1,5 +1,6 @@
 export type CardID = string;
 export type NoteID = string;
+export type IDFilter = (id: FullID) => boolean;
 
 export class FullID implements FullID {
 

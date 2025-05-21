@@ -1,44 +1,62 @@
 import { PluginSettingTab, Setting, Plugin, Platform } from "obsidian";
 import { PLUGIN_NAME } from "UIAssistant";
 
-export interface PluginSettings {	
-  uiPrefix: string;
+export interface PluginSettings {
+	uiPrefix: string;
 	hideCardSectionMarker: boolean;
 	hideDeclarationInReadingView: boolean;
 }
 
+type SettingsChanged = (settings: PluginSettings) => void;
+
 export class SettingsManager {
 	public settings: PluginSettings;
-	public save: () => Promise<void>;
-	public onChangedCallback?: (name: string, value: any) => void;
 
-	static readonly DEFAULT_DATA: PluginSettings = {		
-    uiPrefix: PLUGIN_NAME,
+	/** Saves the {@link settings} to disk. */
+	public save: () => Promise<void>;
+
+	public static readonly DEFAULT_DATA: PluginSettings = {
+		uiPrefix: PLUGIN_NAME,
 		hideCardSectionMarker: false,
 		hideDeclarationInReadingView: false,
 	};
 
-	static readonly SETTING_NAME = {
-	} as const;
-
-	constructor(settings: any, save: (settings: PluginSettings) => Promise<void>, onChangedCallback?: (name: string, value: any) => void) {
+	public constructor(settings: PluginSettings, save: (settings: PluginSettings) => Promise<void>) {
 		this.settings = settings;
 		this.save = () => save(this.settings);
-		this.onChangedCallback = onChangedCallback;
 	}
+
+	public onSettingsChangedExternally(settings: PluginSettings) {
+		this.settings = settings;
+		this.registeredChangedCallbacks.forEach(cb => cb(this.settings));
+	}
+
+	public registerOnChangedCallback(evt: SettingsChanged) {
+		if (!this.registeredChangedCallbacks.includes(evt))
+			this.registeredChangedCallbacks.push(evt);
+	}
+
+	public unregisterOnChangedCallback(evt: SettingsChanged) {
+		this.registeredChangedCallbacks = this.registeredChangedCallbacks.filter(callback => callback !== evt);
+	}
+
+	private registeredChangedCallbacks: SettingsChanged[] = [];
 }
 
 export class SettingTab extends PluginSettingTab {
 	private settingsManager: SettingsManager;
 
-	constructor(plugin: Plugin, settingsManager: SettingsManager) {
+	public constructor(plugin: Plugin, settingsManager: SettingsManager) {
 		super(plugin.app, plugin);
 		this.settingsManager = settingsManager;
 	}
 
-	display(): void {
+	private onChangedCallback = () => this.display();
+
+	public display(): void {
+		this.settingsManager.registerOnChangedCallback(this.onChangedCallback);
 		const { containerEl } = this;
-    const settings = this.settingsManager.settings;
+		const settings = this.settingsManager.settings;
 
 		containerEl.empty();
 
@@ -63,5 +81,9 @@ export class SettingTab extends PluginSettingTab {
 					await this.settingsManager.save();
 				});
 			});
+	}
+
+	public hide(): void {
+		this.settingsManager.unregisterOnChangedCallback(this.onChangedCallback);
 	}
 }
