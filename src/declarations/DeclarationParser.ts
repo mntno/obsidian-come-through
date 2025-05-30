@@ -1,11 +1,9 @@
-import { AlternateHeadingsDeclarable, AlternateHeadingsAssistant } from "declarations/AlternateHeadings";
-import { AlternateHeadingsParser, CommandDeclarationParsable, CommandDeclarationParser } from "declarations/AlternateHeadingsParser";
-import { CardDeclaration, DefaultableCardDeclarable, IDScope } from "declarations/CardDeclaration";
+import { CardDeclaration, DefaultableCardDeclarable } from "declarations/CardDeclaration";
 import { CommandableDeclarable, CommandDeclarationAssistant } from "declarations/CommandDeclaration";
-import { DeclarationRange } from "declarations/Declaration";
+import { Declaration, DeclarationRange } from "declarations/Declaration";
 import { FileParser, SectionRange } from "FileParser";
 import { FullID, IDFilter, NoteID } from "FullID";
-import { App, CachedMetadata, CacheItem, HeadingCache, SectionCache, TFile } from "obsidian";
+import { App, CachedMetadata, CacheItem, FrontMatterCache, HeadingCache, SectionCache, TFile } from "obsidian";
 import { asNoteID, fullIDFromDeclaration } from "TypeAssistant";
 
 /**
@@ -94,7 +92,17 @@ export class DeclarationParser extends FileParser {
 			}
 		};
 
-		// Look for IDs declarations in headings
+		// Check frontmatter for card declaration
+		if (cache.frontmatter) {
+			const declaration = this.getDeclarationFromFrontmatter(cache.frontmatter);
+			if (declaration) {
+				const id = fullIDFromDeclaration(declaration, noteID);
+				if (!checkExistance(id) && (filter === undefined || (filter && filter(id))))
+					ids.push(id);
+			}
+		}
+
+		// Look for ID declarations in headings
 		for (const currentHeading of cache.headings ?? []) {
 			const id = this.findFullIDInText(currentHeading.heading, noteID);
 			if (id && !checkExistance(id)) {
@@ -150,6 +158,19 @@ export class DeclarationParser extends FileParser {
 				return FullID.create(noteID, cardID, isFront);
 		}
 
+		return null;
+	}
+
+	/**
+		* @param frontmatter
+		* @returns The first declaration found in {@link frontmatter}.
+		*/
+	protected static getDeclarationFromFrontmatter(frontmatter: FrontMatterCache) {
+		for (const key of Declaration.supportedFrontmatterKeys) {
+			const maybeDeclaration = frontmatter[key];
+			if (CardDeclaration.conformsToDefaultable(maybeDeclaration) && CardDeclaration.conformsToDeclarable(maybeDeclaration))
+				return maybeDeclaration;
+		}
 		return null;
 	}
 

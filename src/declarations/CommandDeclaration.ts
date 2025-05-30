@@ -1,10 +1,20 @@
-import { AlternateHeadingsAssistant } from "declarations/AlternateHeadings";
+import { isObject, isString } from "TypeAssistant";
+import { CommandDeclarationParsable } from "declarations/CommandDeclarationParser";
 import { DeckableDeclarable, Declaration, DeclarationRange, YamlParseErrorCallback } from "declarations/Declaration";
-import { isNumber, isObject, isString } from "TypeAssistant";
-import { AlternateHeadingsParser, CommandDeclarationParsable, CommandDeclarationParser } from "declarations/AlternateHeadingsParser";
+import { AlternateHeadingsAssistant, AlternateHeadingsDeclarable } from "declarations/commands/AlternateHeadings";
+import { HeadingAndDelimiterAssistant, HeadingAndDelimiterDeclarable } from "declarations/commands/HeadingAndDelimiter";
+import { HeadingIsFrontAssistant, HeadingIsFrontDeclarable } from "declarations/commands/HeadingIsFront";
 
 const AlternateHeadingsCommandNames = [
 	"alternate headings", "alt headings", "ah",
+] as const;
+
+const HeadingAndDelimiterCommandNames = [
+	"heading and delimiter", "hd",
+] as const;
+
+const HeadingIsFrontCommandNames = [
+	"heading is front", "hf",
 ] as const;
 
 const TableCommandNames = [
@@ -13,6 +23,8 @@ const TableCommandNames = [
 
 const CommandNames = [
 	...AlternateHeadingsCommandNames,
+	...HeadingAndDelimiterCommandNames,
+	...HeadingIsFrontCommandNames,
 	...TableCommandNames,
 ] as const;
 
@@ -46,16 +58,29 @@ export class CommandDeclarationAssistant extends Declaration {
 
 		let parser: CommandDeclarationParsable | null = null;
 
-		if (AlternateHeadingsCommandNames.includes(commandable.name as any)) {
-			if (AlternateHeadingsAssistant.conforms(commandable))
-				if (AlternateHeadingsAssistant.isAlternateHeadingsValid(commandable))
-					parser = new AlternateHeadingsParser(commandable);
-		}
+		if (CommandDeclarationAssistant.isAlternateHeadings(commandable))
+			parser = AlternateHeadingsAssistant.tryCreateParser(commandable);
+		else if (CommandDeclarationAssistant.isHeadingAndDelimiter(commandable))
+			parser = HeadingAndDelimiterAssistant.tryCreateParser(commandable);
+		else if (CommandDeclarationAssistant.isHeadingIsFront(commandable))
+			parser = HeadingIsFrontAssistant.tryCreateParser(commandable);
 
 		if (!parser && onInvalidType)
 			onInvalidType(commandable, range);
 
 		return parser;
+	}
+
+	public static isAlternateHeadings(declaration: CommandableDeclarable): declaration is AlternateHeadingsDeclarable {
+		return AlternateHeadingsCommandNames.includes(declaration.name as any);
+	}
+
+	public static isHeadingAndDelimiter(declaration: CommandableDeclarable): declaration is HeadingAndDelimiterDeclarable {
+		return HeadingAndDelimiterCommandNames.includes(declaration.name as any);
+	}
+
+	public static isHeadingIsFront(declaration: CommandableDeclarable): declaration is HeadingIsFrontDeclarable {
+		return HeadingIsFrontCommandNames.includes(declaration.name as any);
 	}
 
 	/**
@@ -75,7 +100,7 @@ export class CommandDeclarationAssistant extends Declaration {
 	 * @param command
 	 * @returns
 	 */
-	public static isTypeValid(command: CommandableDeclarable) {
+	public static isNameValid(command: CommandableDeclarable) {
 		return CommandNames.includes(command.name);
 	}
 }

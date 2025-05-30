@@ -1,4 +1,5 @@
 import { DeckableDeclarable, Declaration, DeclarationRange, YamlParseErrorCallback } from "declarations/Declaration";
+import { isObject } from "TypeAssistant";
 import { UniqueID } from "UniqueID";
 
 export const enum IDScope {
@@ -151,7 +152,7 @@ export class CardDeclaration extends Declaration implements CardDeclarable {
 	 */
 	public static conformsToDefaultable(obj: any): obj is DefaultableCardDeclarable {
 		return (
-			typeof obj === 'object' && obj !== null &&
+			isObject(obj) &&
 			this.validateSide(obj)
 		);
 	}

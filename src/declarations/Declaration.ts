@@ -31,6 +31,10 @@ export abstract class Declaration {
 		return [Declaration.LANGUAGE, Declaration.LANGUAGE_SHORT];
 	}
 
+	public static get supportedFrontmatterKeys() {
+		return [Declaration.LANGUAGE, Declaration.LANGUAGE_SHORT, "come through"];
+	}
+
 	protected static slice(source: string, location: DeclarationRange) {
 		return source.slice(location.start, location.end);
 	}

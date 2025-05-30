@@ -1,4 +1,4 @@
-import { App, CacheItem, HeadingCache, SectionCache, TFile } from "obsidian";
+import { App, CacheItem, HeadingCache, Pos, SectionCache, TFile } from "obsidian";
 
 /**
  * Base {@link Error} thrown from {@link FileParser}.
@@ -17,6 +17,32 @@ export type SectionRange = {
 	/** If `null`, there's no end delimiter, thus ends at the end. */
 	end: SectionCache | CacheItem | null;
 }
+
+/** Represents the unlimited range. */
+export const FullSectionRange: SectionRange = {
+	start: null,
+	end: null,
+};
+
+/** Used to represent the the absence of a position. */
+const NoPosition: Pos = {
+	start: { line: 0, col: 0, offset: 0},
+	end: { line: 0, col: 0, offset: 0},
+}
+
+export const FrontmatterSection: ExternalSectionCache = {
+	externalType: "frontmatter",
+	type: "yaml",
+	position: NoPosition
+}
+
+/**
+* Sections of the file that are not part of the actual Markdown.
+*/
+interface ExternalSectionCache extends SectionCache {
+	externalType: "frontmatter" //| "backmatter"
+}
+
 
 export abstract class FileParser {
 

@@ -9,7 +9,7 @@ import { DataStore, StatisticsData } from "DataStore";
 export class SyncManager {
 
 	public readonly app: App;
-	public readonly dataStore: DataStore;
+	private readonly dataStore: DataStore;
 	private readonly statisticsFactory: () => StatisticsData;
 
 	public constructor(dataStore: DataStore, app: App, statisticsFactory: () => StatisticsData) {

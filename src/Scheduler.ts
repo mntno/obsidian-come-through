@@ -58,7 +58,7 @@ export class Scheduler {
     }));
 
 		const nextItem = items
-			.sort(Scheduler.Comparer.sortByLastReviewDateDesc)
+			.sort(Scheduler.Comparer.sortDueDateAsc)
 			.filter(i => this.isCardDue(i.card, reviewDate)).first();
 
 		return nextItem ? { id: nextItem.id, statistics: Scheduler.asStatistics(nextItem.card) } : null;

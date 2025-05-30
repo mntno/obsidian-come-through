@@ -1,10 +1,9 @@
-import { DeckModal } from "modals/DeckModal";
-import { CardDeclaration } from "declarations/CardDeclaration";
-import { App, MarkdownPostProcessorContext, MarkdownSectionInformation, TFile, Vault } from "obsidian";
 import { DataStore } from "DataStore";
-import { DeclarationRenderer } from "declarations/DeclarationRenderer";
+import { CardDeclaration } from "declarations/CardDeclaration";
 import { DeckableDeclarable, Declaration } from "declarations/Declaration";
-
+import { DeclarationRenderChild } from "renderings/DeclarationRenderChild";
+import { DeckModal } from "modals/DeckModal";
+import { App, MarkdownPostProcessorContext, MarkdownSectionInformation, TFile, Vault } from "obsidian";
 
 export class DeclarationManager {
 
@@ -19,7 +18,7 @@ export class DeclarationManager {
 		ctx: MarkdownPostProcessorContext,
 		data: DataStore) {
 
-		const renderer = new DeclarationRenderer(el, source, {
+		const renderer = new DeclarationRenderChild(el, source, {
 			getAllDecks: () => data.getAllDecks()
 		});
 		ctx.addChild(renderer);
