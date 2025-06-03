@@ -1,12 +1,26 @@
 import { App, CacheItem, HeadingCache, Pos, SectionCache, TFile } from "obsidian";
 
+interface FileParserErrorOptions extends ErrorOptions {
+	type: "file cache unavailable";
+	file: TFile;
+	[key: string]: unknown;
+}
+
 /**
  * Base {@link Error} thrown from {@link FileParser}.
  */
 export class FileParserError extends Error {
-	constructor(message: string, options?: ErrorOptions) {
+	constructor(message: string, options: FileParserErrorOptions) {
 		super(message, options);
 		this.name = "FileParserError";
+		this.options = options;
+	}
+	private readonly options: FileParserErrorOptions;
+	public get type() {
+		return this.options.type;
+	}
+	public get file() {
+		return this.options.file;
 	}
 }
 
@@ -26,11 +40,12 @@ export const FullSectionRange: SectionRange = {
 
 /** Used to represent the the absence of a position. */
 const NoPosition: Pos = {
-	start: { line: 0, col: 0, offset: 0},
-	end: { line: 0, col: 0, offset: 0},
+	start: { line: 0, col: 0, offset: 0 },
+	end: { line: 0, col: 0, offset: 0 },
 }
 
-export const FrontmatterSection: ExternalSectionCache = {
+/** Set `id` to the YAML key in the frontmatter where the declaration is. See {@link FileParser.createFrontmatterSectionWithKey} */
+const FrontmatterSection: ExternalSectionCache = {
 	externalType: "frontmatter",
 	type: "yaml",
 	position: NoPosition
@@ -52,17 +67,30 @@ export abstract class FileParser {
 
 	protected static fileCacheOrThrow(app: App, file: TFile) {
 		const cache = app.metadataCache.getFileCache(file);
-		if (!cache)
-			throw new FileParserError(`No cached metadata available for ${file.path}.`);
-		return cache;
+		if (cache)
+			return cache;
+
+		throw new FileParserError(
+			`No cached metadata available for ${file.path}.`, {
+			type: "file cache unavailable",
+			file: file,
+		});
 	}
 
 	protected static async cachedRead(app: App, file: TFile) {
 		return await app.vault.cachedRead(file);
 	}
 
+	protected static createFrontmatterSectionWithKey(key: string): ExternalSectionCache {
+		return { ...FrontmatterSection, ... { id: key } };
+	}
+
 	protected static isCodeSection(section: SectionCache) {
 		return section.type === this.SECTION_TYPE_CODE;
+	}
+
+	public static isExternalSectionCache(section: CacheItem): section is ExternalSectionCache {
+		return FileParser.isSectionCache(section) && Object.hasOwn(section, "externalType");
 	}
 
 	protected static isHeadingCache(cache: CacheItem): cache is HeadingCache {

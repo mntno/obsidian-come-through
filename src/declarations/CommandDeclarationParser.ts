@@ -30,12 +30,12 @@ export abstract class CommandDeclarationParser<T extends CommandableDeclarable>
 		this.commandable = commandable;
 	}
 
-	protected generateDeclaration(id: string, isFront: boolean, startDelimiter: CacheItem | null, endDelimiter: CacheItem | null) {
+	protected generateDeclaration(id: string, isFront: boolean, startDelimiter: CacheItem | null, endDelimiter: CacheItem | null, scope: IDScope = IDScope.NOTE) {
 		this.generatedDeclarations.push({
 			declaration: new CardDeclaration(
 				id,
 				isFront ? "front" : "back",
-				IDScope.NOTE,
+				scope,
 				this.commandable.deckID,
 				true),
 			range: {
@@ -45,10 +45,18 @@ export abstract class CommandDeclarationParser<T extends CommandableDeclarable>
 		});
 	}
 
-	protected get lastID() {
+	/**
+	 * Convenience method. Only call this when you know that one has been generated.
+	 * @throws `Error` if no declaration has been genereated.
+	 */
+	protected lastDeclaration() {
 		const last = this.generatedDeclarations.last();
 		if (!last)
 			throw new Error(`Expected at least one generated declaration.`);
-		return last!.declaration.id;
+		return last;
+	}
+
+	protected get lastID() {
+		return this.lastDeclaration().declaration.id;
 	}
 }

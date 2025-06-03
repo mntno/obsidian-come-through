@@ -45,10 +45,8 @@ export class ViewAssistant {
 		});
 	}
 
-	public createPara(o: DomElementInfo | string) {
-		this.contentEl.createDiv({ cls: "el-p" }, el => {
-			el.createEl("p", o);
-		});
+	public createPara(o?: DomElementInfo | string) {
+		return this.contentEl.createDiv({ cls: "el-p" }).createEl("p", o);
 	}
 
 	public createTable() {

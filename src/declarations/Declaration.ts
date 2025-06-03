@@ -1,6 +1,10 @@
 import { parseYaml, stringifyYaml } from "obsidian";
+import { isObject, isString } from "TypeAssistant";
+import { UniqueID } from "UniqueID";
 
-export interface Declarable {}
+export interface Declarable {
+	[key: string]: unknown;
+}
 
 export interface DeckableDeclarable extends Declarable {
 	deckID: string | null;
@@ -101,12 +105,26 @@ export abstract class Declaration {
 		}
 	}
 
-	private static toUserFriendlyKeys(obj: Record<string, any>) {
+	private static toUserFriendlyKeys(obj: Declarable) {
 		if (Object.hasOwn(obj, DeckablePropertyName.DECK_ID)) {
 			const deckID = obj[DeckablePropertyName.DECK_ID];
 			delete obj[DeckablePropertyName.DECK_ID];
-			obj[DeckableUserKeyName.DECK] = deckID;
+			// Only include if specific deck set.
+			if (deckID)
+				obj[DeckableUserKeyName.DECK] = deckID;
 		}
+	}
+
+	protected static conformsToDeclarableBase(value: unknown): value is Declarable {
+		return isObject(value);
+	}
+
+	protected static conformsToDeckable(value: unknown): value is DeckableDeclarable {
+		if (!Declaration.conformsToDeclarableBase(value))
+			return false;
+		if (!Object.hasOwn(value, DeckablePropertyName.DECK_ID))
+			value[DeckablePropertyName.DECK_ID] = null;
+		return true;
 	}
 
 	public static copyWithDeck<T extends DeckableDeclarable>(declaration: T, deckID: string | null): T {
@@ -118,15 +136,7 @@ export abstract class Declaration {
 		}
 	}
 
-	protected static validateDeck(obj: Record<string, any>) {
-		if (Object.hasOwn(obj, DeckablePropertyName.DECK_ID)) {
-			const value = obj[DeckablePropertyName.DECK_ID];
-			if (value === undefined)
-				return true;
-			return typeof value === 'string' //&& UniqueID.isValid(<string>value);
-		}
-		else {
-			return true;
-		}
+	protected static isDeckIDValid(id: string | null) {
+		return id === null || (isString(id) && UniqueID.isValid(id));
 	}
 }

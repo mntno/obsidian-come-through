@@ -1,4 +1,4 @@
-import { CardDeclaration } from "declarations/CardDeclaration";
+import { CardDeclarationAssistant } from "declarations/CardDeclaration";
 import { CommandDeclarationAssistant } from "declarations/CommandDeclaration";
 import { Declaration } from "declarations/Declaration";
 import { MarkdownRenderChild, setIcon } from "obsidian";
@@ -66,7 +66,7 @@ export class DeclarationRenderChild extends MarkdownRenderChild {
 			}
 		}
 		else {
-			if (CardDeclaration.conformsToDefaultable(declaration))
+			if (CardDeclarationAssistant.conformsToDefaultable(declaration))
 				declarationRenderer = new CardDeclarationRenderer(declaration);
 
 			if (declarationRenderer instanceof DeclarationErrorRenderer)

@@ -27,9 +27,14 @@ export class Scheduler {
     return Scheduler.asStatistics(createEmptyCard(new Date()));
   }
 
-  public rateItem(id: FullID, grade: Grade, reviewDate?: Date) {
+  /**
+  * @param id ID of the item to rate.
+  * @param grade The grade to rate.
+  * @param scheduleDate The date for the scheduling. Omit to schedule at the time of call (recommended).
+  */
+  public rateItem(id: FullID, grade: Grade, scheduleDate?: Date) {
     this.data.editCard(id, (editor) => {
-      const recordLogItem = this.fsrs.next(Scheduler.asCard(editor.data.s), reviewDate ?? new Date(), grade);
+      const recordLogItem = this.fsrs.next(Scheduler.asCard(editor.data.s), scheduleDate ?? new Date(), grade);
       Scheduler.setStatistics(editor.data.s, recordLogItem.card);
       //this.data.log.unshift(recordLogItem.log);
       return true;

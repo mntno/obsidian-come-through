@@ -31,8 +31,7 @@ export class ConfirmationModal extends Modal {
 				button.onClick(() => {
 					button.setDisabled(true);
 					this.onButton1Click?.();
-					this.canClose = true;
-					this.close();
+					this.forceClose();
 				});
 			})
 			.addButton((button) => {
@@ -41,8 +40,7 @@ export class ConfirmationModal extends Modal {
 				button.onClick(() => {
 					button.setDisabled(true);
 					this.onButton2Click?.();
-					this.canClose = true;
-					this.close();
+					this.forceClose();
 				});
 			});
 	}
@@ -51,5 +49,10 @@ export class ConfirmationModal extends Modal {
 		if (this.canClose)
 			super.close();
 		this.onClosed?.();
+	}
+
+	public forceClose() {
+		this.canClose = true;
+		this.close();
 	}
 }

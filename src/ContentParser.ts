@@ -1,6 +1,7 @@
-import { IDScope } from "declarations/CardDeclaration";
+import { CardDeclarationAssistant, IDScope } from "declarations/CardDeclaration";
+import { Declaration } from "declarations/Declaration";
 import { DeclarationParser } from "declarations/DeclarationParser";
-import { FrontmatterSection, FullSectionRange, SectionRange } from "FileParser";
+import { FullSectionRange, SectionRange } from "FileParser";
 import { CardID, FullID, NoteID } from "FullID";
 import { App, CachedMetadata, HeadingCache, SectionCache, TFile } from "obsidian";
 import { asNoteID, fullIDFromDeclaration } from "TypeAssistant";
@@ -274,18 +275,20 @@ export class ContentParser extends DeclarationParser {
 
 		//#endregion
 
-		// Look for IDs declarations in frontmatter
+		// Look for a declaration in the frontmatter
 		if (cache.frontmatter) {
-			const declaration = this.getDeclarationFromFrontmatter(cache.frontmatter);
-			if (declaration) {
-				cardInfos.push({
-					id: fullIDFromDeclaration(declaration, noteID),
-					scope: IDScope.UNIQUE, // Currently only explicit card declaratons are implemented.
-					contentInfo: {
-						section: FrontmatterSection,
-						range: FullSectionRange,
-					}
-				});
+			for (const key of Declaration.supportedFrontmatterKeys) {
+				const declaration = CardDeclarationAssistant.fromFrontmatter(cache.frontmatter[key]);
+				if (declaration) {
+					cardInfos.push({
+						id: fullIDFromDeclaration(declaration, noteID),
+						scope: declaration.idScope,
+						contentInfo: {
+							section: ContentParser.createFrontmatterSectionWithKey(key),
+							range: FullSectionRange,
+						}
+					});
+				}
 			}
 		}
 

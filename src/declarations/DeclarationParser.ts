@@ -1,4 +1,4 @@
-import { CardDeclaration, DefaultableCardDeclarable } from "declarations/CardDeclaration";
+import { CardDeclarable, CardDeclarationAssistant, DefaultableCardDeclarable } from "declarations/CardDeclaration";
 import { CommandableDeclarable, CommandDeclarationAssistant } from "declarations/CommandDeclaration";
 import { Declaration, DeclarationRange } from "declarations/Declaration";
 import { FileParser, SectionRange } from "FileParser";
@@ -26,7 +26,7 @@ export interface PostParseInfo {
 }
 
 /**
- * All info needed to extract a {@link CardDeclaration|declaration block} from a note.
+ * All info needed to extract a {@link CardDeclarationAssistant|declaration block} from a note.
  */
 export interface DeclarationInfo extends DeclarationInfoBase {
 	/** The declaration candidate. */
@@ -94,7 +94,7 @@ export class DeclarationParser extends FileParser {
 
 		// Check frontmatter for card declaration
 		if (cache.frontmatter) {
-			const declaration = this.getDeclarationFromFrontmatter(cache.frontmatter);
+			const declaration = this.getDeclarationFromFrontmatter(cache.frontmatter, noteID, parseInfo);
 			if (declaration) {
 				const id = fullIDFromDeclaration(declaration, noteID);
 				if (!checkExistance(id) && (filter === undefined || (filter && filter(id))))
@@ -114,7 +114,7 @@ export class DeclarationParser extends FileParser {
 		// Look for declarations in root level Markdown blocks.
 		for (const section of cache.sections ?? []) {
 
-			const createAndAddIDFromDeclaration = (declaration: CardDeclaration) => {
+			const createAndAddIDFromDeclaration = (declaration: CardDeclarable) => {
 				const id = fullIDFromDeclaration(declaration, noteID);
 				if (!checkExistance(id) && (filter === undefined || (filter && filter(id))))
 					ids.push(id);
@@ -165,11 +165,18 @@ export class DeclarationParser extends FileParser {
 		* @param frontmatter
 		* @returns The first declaration found in {@link frontmatter}.
 		*/
-	protected static getDeclarationFromFrontmatter(frontmatter: FrontMatterCache) {
+	protected static getDeclarationFromFrontmatter(frontmatter: FrontMatterCache, noteID: NoteID, parseInfo?: PostParseInfo) {
 		for (const key of Declaration.supportedFrontmatterKeys) {
-			const maybeDeclaration = frontmatter[key];
-			if (CardDeclaration.conformsToDefaultable(maybeDeclaration) && CardDeclaration.conformsToDeclarable(maybeDeclaration))
-				return maybeDeclaration;
+			const declaration = CardDeclarationAssistant.fromFrontmatter(frontmatter[key], (incomplete, location) => {
+				parseInfo?.incompleteDeclarationInfos.push({
+					noteID: noteID,
+					declaration: incomplete,
+					section: DeclarationParser.createFrontmatterSectionWithKey(key),
+					location: location,
+				});
+			});
+			if (declaration)
+				return declaration;
 		}
 		return null;
 	}
@@ -187,7 +194,7 @@ export class DeclarationParser extends FileParser {
 
 		const source = fileContent.slice(section.position.start.offset, section.position.end.offset);
 
-		return CardDeclaration.parseCodeBlock(
+		return CardDeclarationAssistant.parseCodeBlock(
 			source,
 			(parseError) => {
 				parseInfo?.invalidYaml.push({
@@ -212,7 +219,7 @@ export class DeclarationParser extends FileParser {
 		* @param command
 		* @param cache
 		* @param parseInfo
-		* @returns An array of all auto generated {@link CardDeclaration|declarations} along with their {@link SectionRange|range}.
+		* @returns An array of all auto generated {@link CardDeclarationAssistant|declarations} along with their {@link SectionRange|range}.
 		*/
 	protected static getAutoDeclarationsFromSection(section: SectionCache, cache: CachedMetadata, noteID: NoteID, fileContent: string, parseInfo?: PostParseInfo) {
 

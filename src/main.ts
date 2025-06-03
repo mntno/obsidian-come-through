@@ -3,12 +3,13 @@ import { DeclarationManager } from "declarations/DeclarationManager";
 import { DeclarationParser } from "declarations/DeclarationParser";
 import { ConfirmationModal } from "modals/ConfirmationModal";
 import { SelectDeckModal } from "modals/SelectDeckModal";
-import { Keymap, MarkdownPostProcessorContext, PaneType, Plugin, TFile } from "obsidian";
+import { Editor, Keymap, MarkdownFileInfo, MarkdownPostProcessorContext, MarkdownView, Menu, PaneType, Plugin, TFile } from "obsidian";
 import { Scheduler } from "Scheduler";
 import { PluginSettings, SettingsManager, SettingTab } from "Settings";
 import { SyncManager } from "SyncManager";
 import { asNoteID } from "TypeAssistant";
 import { PLUGIN_ICON, UIAssistant } from "UIAssistant";
+import { UniqueID } from "UniqueID";
 import { DecksView } from "views/DecksView";
 import { ReviewView } from "views/ReviewView";
 
@@ -75,14 +76,27 @@ export default class ComeThroughPlugin extends Plugin {
 			callback: () => this.openDecksView(true)
 		});
 
+		this.addCommand({
+			id: 'generate-id-cursor',
+			name: 'Create a new id under cursor',
+			editorCallback: (editor: Editor, _view: MarkdownView) => {
+				editor.replaceRange(UniqueID.generateID(), editor.getCursor())
+			}
+		});
+
 		//#endregion
 	}
 
-	//public onunload() { }
+	public onunload() {
+		if (this.confirmationModal)
+			this.confirmationModal.forceClose();
+	}
 
 	public async onExternalSettingsChange() {
 		if (!this.pluginData)
 			return;
+
+		this.syncManager.setDisabled(); // Disable as soon as possible before any file events are fired.
 
 		this.pluginData = await ComeThroughPlugin.loadPluginData(this);
 		this.settingsManager.onSettingsChangedExternally(this.pluginData.settings);
@@ -95,13 +109,25 @@ export default class ComeThroughPlugin extends Plugin {
 				this.confirmationModal.open();
 			}
 
-			// If the data is changed externally several times before the user takes action, the intermediate external change are ignored.
-			this.confirmationModal.onClosed = () => this.confirmationModal = undefined;
-			this.confirmationModal.onButton1Click = commit;
+			this.confirmationModal.onClosed = () => {
+				this.confirmationModal = undefined;
+			}
+
+			this.confirmationModal.onButton1Click = () => {
+				// Use new data.
+				// If the data is changed externally several times before the user takes action, the intermediate external changes are ignored.
+				// No need to persist to disk here because the change has already occured.
+				commit();
+				this.syncManager.setEnabled();
+			};
+
 			this.confirmationModal.onButton2Click = () => {
+				// Reverse change, use old data.
 				this.pluginData.data = currentData;
+				this.syncManager.setEnabled();
 				this.savePluginData();
 			};
+
 		});
 	}
 	private confirmationModal?: ConfirmationModal;

@@ -8,6 +8,7 @@ import { Grade, Rating, show_diff_message, State, TypeConvert } from "ts-fsrs";
 import { CARD_BACK_ICON as BACK_ICON, PLUGIN_ICON, CARD_FRONT_ICON as FRONT_ICON, UIAssistant } from "UIAssistant";
 import { ViewAssistant } from "views/ViewAssistant";
 import { InternalApi } from "InternalApi";
+import { FileParserError } from "FileParser";
 
 export interface IReviewViewState {
 	deckID?: DeckID;
@@ -32,7 +33,7 @@ export class ReviewView extends ItemView {
 
 		//#region Hotkeys
 
-		const toggleFrontBackEventListener: KeymapEventListener = (evt, _ctx) => {
+		const toggleFrontBackEventListener: KeymapEventListener = (_evt, _ctx) => {
 			this.toggleAnswer();
 			return false;
 		};
@@ -192,46 +193,65 @@ export class ReviewView extends ItemView {
 	private async render() {
 		this.viewAssistant.empty();
 
-		const cards = this.data.getAllCardsForDeck(this.deck?.id);
-
-		if (cards.length == 0) {
-			this.viewAssistant.createPara({
-				text: `There are no cards in ${this.deck ? `the deck named ${this.deck.data.n}` : "this vault"}.`
-			});
+		const abort = () => {
 			this.toggleAnswerButton?.hide();
+		};
+
+		try {
+
+			const cards = this.data.getAllCardsForDeck(this.deck?.id);
+			if (cards.length == 0) {
+				this.viewAssistant.createPara({
+					text: `There are no cards in ${this.deck ? `the deck named ${this.deck.data.n}` : "this vault"}.`
+				});
+				abort();
+				return;
+			}
+
+			this.reviewDate = new Date();
+			this.reviewedItem = this.scheduler.getNextItem(cards, this.reviewDate); // Not necessarily deterministic.
+
+			if (!this.reviewedItem) {
+				this.viewAssistant.createPara({ text: `No more cards at the moment. All ${cards.length} cards ${this.deck ? `under ${this.deck.data.n}` : "in this vault"} are done.` });
+				abort();
+				return;
+			}
+
+			console.assert(this.reviewedItem.id.cardID, "Card expected.");
+			if (this.reviewedItem.id.cardID === undefined) {
+				abort();
+				return;
+			}
+
+			const maybeCompleteCard = await ContentParser.getCard(
+				this.reviewedItem.id,
+				this.app,
+				{
+					contentRead: {
+						hideCardSectionMarker: this.settingsManager.settings.hideCardSectionMarker
+					},
+					likelyNoteIDs: this.data.getAllNotes()
+				}
+			);
+
+			if (maybeCompleteCard.complete === null) {
+				if (maybeCompleteCard.complete === null && maybeCompleteCard.incomplete === null)
+					this.viewAssistant.createPara({ text: `Could not find content of "${this.reviewedItem.id.cardID}" in "${this.reviewedItem.id.noteID}".` });
+				if (maybeCompleteCard.incomplete !== null)
+					this.viewAssistant.createPara({ text: `"${this.reviewedItem.id.toString()}" does not have a ${!maybeCompleteCard.incomplete.backMarkdown ? "back" : "front"} side.` });
+				abort();
+				return;
+			}
+
+			this.currentCard = maybeCompleteCard.complete;
+
+		} catch (error: unknown) {
+			this.handleError(error);
+			abort();
 			return;
 		}
 
-		this.reviewDate = new Date();
-		this.reviewedItem = this.scheduler.getNextItem(cards, this.reviewDate); // Not necessarily deterministic.
-
-		if (!this.reviewedItem) {
-			this.viewAssistant.createPara({ text: `No more cards at the moment. All ${cards.length} cards ${this.deck ? `under ${this.deck.data.n}` : "in this vault"} are done.` });
-			this.toggleAnswerButton?.hide();
-			return;
-		}
-
-		console.assert(this.reviewedItem.id.cardID, "Card expected.");
-		if (this.reviewedItem.id.cardID === undefined)
-			return;
-
-		const maybeCompleteCard = await ContentParser.getCard(this.reviewedItem.id, this.app, {
-			contentRead: {
-				hideCardSectionMarker: this.settingsManager.settings.hideCardSectionMarker
-			},
-			likelyNoteIDs: this.data.getAllNotes()
-		});
-
-		if (maybeCompleteCard.complete === null) {
-			if (maybeCompleteCard.complete === null && maybeCompleteCard.incomplete === null)
-				this.viewAssistant.createPara({ text: `Could not find content of "${this.reviewedItem.id.cardID}" in "${this.reviewedItem.id.noteID}".` });
-			if (maybeCompleteCard.incomplete !== null)
-				this.viewAssistant.createPara({ text: `"${this.reviewedItem.id.toString()}" does not have a ${!maybeCompleteCard.incomplete.backMarkdown ? "back" : "front"} side.` });
-			this.toggleAnswerButton?.hide();
-			return;
-		}
-
-		const parsedCard = this.currentCard = maybeCompleteCard.complete;
+		const parsedCard = this.currentCard;
 		const nextItems = this.scheduler.previewNextItem(this.reviewedItem.statistics, this.reviewDate);
 		const ratingButtonsContainer = createDiv({ cls: "come-through-rating-buttons" });
 
@@ -274,8 +294,33 @@ export class ReviewView extends ItemView {
 			this.renderMetadata();
 	}
 
+	private handleError(error: unknown) {
+		if (error instanceof FileParserError) {
+			if (error.type === "file cache unavailable") {
+
+				this.viewAssistant.createPara({
+					text: `Cannot display card because "${error.file.path}" is not indexed.`
+				});
+
+				const reloadButton = this.viewAssistant
+					.createPara()
+					.createEl("button", { text: "Reload Obsidian" });
+
+				this.registerDomEvent(reloadButton, "click", async () => {
+					InternalApi.reloadApp(this.app);
+				})
+			}
+		}
+		else if (error instanceof Error) {
+			this.viewAssistant.createPara({ text: error.message });
+		} else {
+			this.viewAssistant.createPara({ text: `Unexpected error` });
+		}
+	}
+
 	private async rate(id: FullID, grade: Grade) {
-		this.scheduler.rateItem(id, grade, this.reviewDate);
+		// Use now as scheduling date rather than the date of rendering to avoid items being scheduled as due in the past, e.g., when next interval is 1 min.
+		this.scheduler.rateItem(id, grade);
 		this.ui.displayNotice(`You rated ${Rating[grade]}`);
 
 		await this.data.save(); // This will trigger a refresh

@@ -1,3 +1,4 @@
+import { IDScope } from "declarations/CardDeclaration";
 import { CommandableDeclarable } from "declarations/CommandDeclaration";
 import { CommandDeclarationParsable, CommandDeclarationParser } from "declarations/CommandDeclarationParser";
 import { HeadingsCommandableAssistant, HeadingsCommandableDeclarable } from "declarations/commands/HeadingsCommandable";
@@ -61,11 +62,24 @@ export class HeadingAndDelimiterParser extends CommandDeclarationParser<HeadingA
 		}
 
 		let id: string;
+		let idScope;
 
-		if (isDelimiterHeading)
-			id = inBetweenDelimiter.heading;
-		else if (HeadingAndDelimiterParser.isSectionType(inBetweenDelimiter, HeadingAndDelimiterParser.SECTION_TYPE_THEMATICBREAK))
-			id = this.lastID;
+		if (isDelimiterHeading) {
+			const uniqueID = this.tryParseUniqueID(inBetweenDelimiter.heading);
+			if (uniqueID) {
+				id = uniqueID;
+				idScope = IDScope.UNIQUE;
+			}
+			else {
+				id = inBetweenDelimiter.heading;
+				idScope = IDScope.NOTE;
+			}
+		}
+		else if (HeadingAndDelimiterParser.isSectionType(inBetweenDelimiter, HeadingAndDelimiterParser.SECTION_TYPE_THEMATICBREAK)) {
+			const lastDecl = this.lastDeclaration();
+			id = lastDecl.declaration.id;
+			idScope = lastDecl.declaration.idScope;
+		}
 		else
 			return;
 
@@ -85,7 +99,7 @@ export class HeadingAndDelimiterParser extends CommandDeclarationParser<HeadingA
 				break;
 		}
 
-		this.generateDeclaration(id, this.lastFrontHeadingLevel ? false : true, inBetweenDelimiter, nextDelimiter);
+		this.generateDeclaration(id, this.lastFrontHeadingLevel ? false : true, inBetweenDelimiter, nextDelimiter, idScope);
 
 		if (isDelimiterHeading)
 			this.lastFrontHeadingLevel = inBetweenDelimiter.level; // Next iteration is the back side. Save the level to be able to find the next heading that counts as the end of the back side.
@@ -102,4 +116,11 @@ export class HeadingAndDelimiterParser extends CommandDeclarationParser<HeadingA
 	private isOnSpecifiedLevel(parentHeadingLevel: number, section: HeadingCache) {
 		return section.level == parentHeadingLevel + this.commandable.level;
 	}
+
+	private tryParseUniqueID(text: string) {
+		const match = this.FULL_ID_REGEX.exec(text);
+		return match ? match[1].toLowerCase() : null;
+	}
+	protected readonly FULL_ID_REGEX = /@([^\s]+)/i;
+
 }

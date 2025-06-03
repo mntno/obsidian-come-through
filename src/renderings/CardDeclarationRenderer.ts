@@ -1,6 +1,6 @@
 import { DeclarationRenderer, DeclarationRenderable, DeclarationRenderAssistant } from "renderings/DeclarationRenderable";
 import { HeadingAndDelimiterAssistant, HeadingAndDelimiterDeclarable } from "declarations/commands/HeadingAndDelimiter";
-import { CardDeclaration, DefaultableCardDeclarable } from "declarations/CardDeclaration";
+import { CardDeclarationAssistant, DefaultableCardDeclarable } from "declarations/CardDeclaration";
 
 export class CardDeclarationRenderer
 	extends DeclarationRenderer<DefaultableCardDeclarable>
@@ -19,9 +19,9 @@ export class CardDeclarationRenderer
 
 		const rowSide = body.createEl("tr");
 		rowSide.createEl("td", { text: "Side" });
-		rowSide.createEl("td", { text: `${CardDeclaration.isFrontSide(this.declarable) ? "Front" : "Back"}` });
+		rowSide.createEl("td", { text: `${CardDeclarationAssistant.isFrontSide(this.declarable) ? "Front" : "Back"}` });
 
-		if (CardDeclaration.isFrontSide(this.declarable)) {
+		if (CardDeclarationAssistant.isFrontSide(this.declarable)) {
 			f.createDeckRow(body, this.declarable);
 		}
 	}

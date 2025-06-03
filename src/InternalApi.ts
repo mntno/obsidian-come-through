@@ -25,4 +25,9 @@ export class InternalApi {
 			return false;
 		}
 	}
+
+	public static reloadApp(app: App) {
+		// @ts-ignore
+		app.commands.executeCommandById("app:reload");
+	}
 }

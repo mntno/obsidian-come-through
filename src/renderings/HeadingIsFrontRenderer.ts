@@ -9,13 +9,13 @@ export class HeadingIsFrontRenderer
 
 		if (!HeadingIsFrontAssistant.conforms(this.declarable) || !HeadingIsFrontAssistant.isValid(this.declarable)) {
 			r.setError();
-			r.setTitle("Invalid headings is front command");
+			r.setTitle("Invalid heading is front command");
 			r.addParagraph("Please check the entered values.");
 			return;
 		}
 
-		r.setTitle("Each headings becomes the front side");
-		r.addParagraph("The content of the heading becomes the back side.");
+		r.setTitle("Each heading becomes the front side");
+		r.addParagraph("The section of the heading becomes the back side.");
 
 		const table = r.createEl("table");
 		const body = table.createEl("tbody");

@@ -1,10 +1,15 @@
 import { DataStore } from "DataStore";
-import { CardDeclaration } from "declarations/CardDeclaration";
+import { CardDeclarationAssistant } from "declarations/CardDeclaration";
 import { DeckableDeclarable, Declaration } from "declarations/Declaration";
 import { DeclarationRenderChild } from "renderings/DeclarationRenderChild";
 import { DeckModal } from "modals/DeckModal";
 import { App, MarkdownPostProcessorContext, MarkdownSectionInformation, TFile, Vault } from "obsidian";
 
+/**
+	* - Delegates the rendering of declarations.
+	* - Handles user interaction with the rendered components.
+	* - Modifies the file if necessary as a result of changes made by the user.
+	*/
 export class DeclarationManager {
 
 	public static get supportedCodeBlockLanguages() {
@@ -54,7 +59,7 @@ export class DeclarationManager {
 					});
 
 					handleChangedDeclaration(
-						CardDeclaration.copyWithDeck(declaration, addedDeck.id),
+						CardDeclarationAssistant.copyWithDeck(declaration, addedDeck.id),
 						file
 					).catch(console.error);
 				});
@@ -66,7 +71,7 @@ export class DeclarationManager {
 					return;
 
 				handleChangedDeclaration(
-					CardDeclaration.copyWithDeck(declaration, selectedDeckID),
+					CardDeclarationAssistant.copyWithDeck(declaration, selectedDeckID),
 					file
 				).catch(console.error);
 			}
