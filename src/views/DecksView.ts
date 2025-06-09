@@ -1,67 +1,62 @@
-import { DeckModal } from "modals/DeckModal";
-import { ItemView, Menu, setIcon, setTooltip, WorkspaceLeaf } from "obsidian";
 import { DataStore } from "DataStore";
-import { ViewAssistant } from "views/ViewAssistant";
-import { DeckID } from "FullID";
+import { DeckModal } from "modals/DeckModal";
+import { Menu, setIcon, setTooltip, ViewStateResult, WorkspaceLeaf } from "obsidian";
+import { SettingsManager } from "Settings";
+import { BaseView, BaseViewState } from "views/BaseView";
 
 
-export class DecksView extends ItemView {
+export class DecksView extends BaseView<BaseViewState> {
 
 	public static readonly TYPE = "come-through-view-decks";
-	private readonly viewAssistant = new ViewAssistant();
 
-	constructor(
-		leaf: WorkspaceLeaf,
-		private readonly data: DataStore) {
-		super(leaf);
+	private readonly data: DataStore;
+
+	constructor(leaf: WorkspaceLeaf, settingsManager: SettingsManager, data: DataStore) {
+		super(leaf, settingsManager, { data: data });
+		this.data = data;
 
 		this.navigation = true;
 	}
 
-	//#region
-
-	getIcon() {
+	public override getIcon() {
 		return "file-stack";
 	}
 
-	getViewType(): string {
+	public getViewType(): string {
 		return DecksView.TYPE;
 	}
 
-	getDisplayText(): string {
+	public getDisplayText(): string {
 		return "Decks";
 	}
 
-	protected async onOpen() {
-		this.data.registerOnChangedCallback(this.onDataChangedCallback);
-		this.addAction("refresh-cw", "Reload", () => {
-			this.refreshView();
+	protected onSetState(state: BaseViewState, result: ViewStateResult): void {
+	}
+
+	protected onGetState(): BaseViewState {
+		return {};
+	}
+
+	public override onPaneMenu(menu: Menu, source: 'more-options' | 'tab-header' | string) {
+		super.onPaneMenu(menu, source);
+		if (source === "tab-header")
+			return;
+
+		menu.addItem(item => {
+			item.setTitle("Reload");
+			item.setSection("pane");
+			item.setIcon("refresh-cw");
+			item.onClick(this.refreshView);
 		});
-
-		this.contentEl.empty();
-		this.viewAssistant.init(this.contentEl);
-
-		await this.refreshView();
 	}
 
-	protected async onClose() {
-		this.data.unregisterOnChangedCallback(this.onDataChangedCallback);
-		this.viewAssistant.deinit();
-	}
-
-	//#endregion
-
-	private onDataChangedCallback = () => this.refreshView();
-
-	private async refreshView() {
-
-		this.viewAssistant.empty();
+	protected async onRender() {
 
 		const allCards = this.data.getAllCards();
 		const decks = this.data.getAllDecks();
 		const numberOfCardsInDefaultDeck = allCards.filter(this.data.filter.cardsWithoutDeck).length;
 
-		//this.viewAssistant.createH1({ text: "Decks" });
+		//this.viewAssistant.createEl("h1", { text: "Decks" });
 
 		this.viewAssistant.createPara({
 			text: `There are ${allCards.length - numberOfCardsInDefaultDeck} cards in a total of ${decks.length} decks.`
@@ -83,7 +78,7 @@ export class DecksView extends ItemView {
 				th.createEl("button", { text: "Add" }, (button) => {
 					setIcon(button, "plus");
 					setTooltip(button, "Add new deck");
-					this.registerDomEvent(button, "click", this.add.bind(this));
+					this.contentRenderer.registerDomEvent(button, "click", () => new DeckModal(this.app, this.data, () => { }).open());
 				});
 			});
 		});
@@ -108,19 +103,22 @@ export class DecksView extends ItemView {
 			rowID.createEl("td", {}, (td) => {
 				const ellipsisButton = td.createEl("button", {}, (button) => {
 
-					this.registerDomEvent(button, 'click', (evt: MouseEvent) => {
+					this.contentRenderer.registerDomEvent(button, 'click', (evt: MouseEvent) => {
 						const menu = new Menu();
 						menu.addItem((item) => {
 							item.setTitle("Edit");
 							item.setIcon("pen");
-							item.onClick(this.edit.bind(this, deck.id));
+							item.onClick(() => new DeckModal(this.app, this.data, () => { }, deck.id).open());
 						});
 
 						menu.addItem((item) => {
 							item.setTitle("Delete")
 							item.setIcon("trash")
 							item.setDisabled(numberOfCardsInDeck > 0)
-							item.onClick(this.delete.bind(this, deck.id));
+							item.onClick(async () => {
+								this.data.deleteDeck(deck.id, undefined, true);
+								await this.data.save();
+							});
 						});
 
 						menu.showAtMouseEvent(evt);
@@ -129,23 +127,5 @@ export class DecksView extends ItemView {
 				setIcon(ellipsisButton, "ellipsis-vertical");
 			});
 		}
-	}
-
-	private add() {
-		new DeckModal(this.app, this.data, (_) => {
-			this.refreshView();
-		}).open();
-	}
-
-	private edit(deckID: DeckID) {
-		new DeckModal(this.app, this.data, (_) => {
-			this.refreshView();
-		}, deckID).open();
-	}
-
-	private async delete(deckID: DeckID) {
-		this.data.deleteDeck(deckID, undefined, true);
-		await this.data.save();
-		this.refreshView();
 	}
 }

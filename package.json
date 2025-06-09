@@ -21,10 +21,10 @@
 		"fast-equals": "5.2.2",
 		"globals": "16.0.0",
 		"obsidian": "latest",
+		"ts-fsrs": "5.2.1",
 		"tslib": "2.8.1",
 		"typescript": "5.8.2",
-		"typescript-eslint": "8.26.0",
-		"ts-fsrs": "4.7.1"
+		"typescript-eslint": "8.26.0"
 	},
 	"type": "module",
 	"pnpm": {

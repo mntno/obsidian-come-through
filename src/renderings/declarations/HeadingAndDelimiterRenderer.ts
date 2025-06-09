@@ -1,4 +1,4 @@
-import { DeclarationRenderer, DeclarationRenderable, DeclarationRenderAssistant } from "renderings/DeclarationRenderable";
+import { DeclarationRenderer, DeclarationRenderable, DeclarationRenderAssistant } from "./DeclarationRenderable";
 import { HeadingAndDelimiterAssistant, HeadingAndDelimiterDeclarable } from "declarations/commands/HeadingAndDelimiter";
 
 export class HeadingAndDelimiterRenderer

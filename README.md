@@ -28,7 +28,9 @@ side: back
 ```
 ````
 
-- The `id` should not be changed (once you rate the card for the first time) or it will be treated as a new card.
+> [!NOTE]
+>
+> The `id` should not be changed (once you rate the card for the first time) or it will be treated as a new card.
 
 The `id` of this type of card (the default type) must be unique across the vault, which allows for declaring one side of a certain card in one note each. The following note, for example, contains three sides: one complete card and one front side.
 
@@ -108,9 +110,13 @@ To prevent this, the safest approach is to make changes on only one device at a 
 
 ## Roadmap
 
-- Quicker way to create cards.
-- Review sort order options.
-- Mechanism to avoid sync conflicts.
-- A card can belong to more than one deck.
-- A deck can be a subdeck of more than one deck.
-- Reverse cards.
+- More and quicker ways to create content to review.
+- More ways to group defined content and select for review.
+- Scheduler settings.
+
+## More
+
+See the [release notes](https://github.com/mntno/obsidian-come-through/releases) for more details.
+
+
+

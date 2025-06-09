@@ -1,7 +1,7 @@
 {
 	"id": "come-through",
 	"name": "Come Through",
-	"version": "0.4.2",
+	"version": "0.5.0",
 	"minAppVersion": "1.8.0",
 	"description": "Drill flashcards using spaced repetition.",
 	"author": "mntno",

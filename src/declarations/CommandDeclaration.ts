@@ -47,11 +47,11 @@ export class CommandDeclarationAssistant extends Declaration {
 		onParseError?: YamlParseErrorCallback,
 		onInvalidType?: (command: CommandableDeclarable, range: DeclarationRange) => void) {
 
-		const range = this.contentOfCodeBlock(source);
-		if (!range)
+		const info = super.parseAndCheckCodeBlock(source);
+		if (!info)
 			return null;
 
-		const obj = super.tryParseYaml(Declaration.slice(source, range), onParseError);
+		const obj = super.tryParseYaml(info.content, onParseError);
 		const commandable = obj && CommandDeclarationAssistant.conforms(obj) ? obj : null;
 		if (!commandable)
 			return null;
@@ -66,7 +66,7 @@ export class CommandDeclarationAssistant extends Declaration {
 			parser = HeadingIsFrontAssistant.tryCreateParser(commandable);
 
 		if (!parser && onInvalidType)
-			onInvalidType(commandable, range);
+			onInvalidType(commandable, info.location satisfies DeclarationRange);
 
 		return parser;
 	}

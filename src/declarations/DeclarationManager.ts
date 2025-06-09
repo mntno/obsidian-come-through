@@ -1,7 +1,7 @@
 import { DataStore } from "DataStore";
 import { CardDeclarationAssistant } from "declarations/CardDeclaration";
 import { DeckableDeclarable, Declaration } from "declarations/Declaration";
-import { DeclarationRenderChild } from "renderings/DeclarationRenderChild";
+import { DeclarationRenderChild } from "renderings/declarations/DeclarationRenderChild";
 import { DeckModal } from "modals/DeckModal";
 import { App, MarkdownPostProcessorContext, MarkdownSectionInformation, TFile, Vault } from "obsidian";
 
@@ -26,7 +26,7 @@ export class DeclarationManager {
 		const renderer = new DeclarationRenderChild(el, source, {
 			getAllDecks: () => data.getAllDecks()
 		});
-		ctx.addChild(renderer);
+		ctx.addChild(renderer); // The MarkdownPostProcessorContext manage unload, e.g., when file is closed.
 
 		const handleChangedDeclaration = async (
 			changedDeclaration: DeckableDeclarable,

@@ -8,7 +8,7 @@ import { asNoteID, fullIDFromDeclaration } from "TypeAssistant";
 
 /**
 	* The result of attempting to retrieve the content of a particular {@link FullID}.
-	* Returned by {@link ContentParser.getAllCards} and {@link ContentParser.getCard}.
+	* Returned by {@link ContentParser.getAllCards}, {@link ContentParser.getCardFromFile} and {@link ContentParser.getCard}.
 	*/
 export type ParsedCardResult = {
 	complete: ParsedCard | null;
@@ -112,6 +112,12 @@ export class ContentParser extends DeclarationParser {
 		for (const file of app.vault.getFiles())
 			await this.getContentFromFile(file, app, parseResult, undefined, options);
 
+		return this.processParseResult(parseResult);
+	}
+
+	public static async getCardFromFile(file: TFile, app: App, options?: ParseOptions) {
+		const parseResult: ParseResult = {};
+		await this.getContentFromFile(file, app, parseResult, undefined, options);
 		return this.processParseResult(parseResult);
 	}
 
@@ -494,7 +500,7 @@ export class ContentParser extends DeclarationParser {
 	 */
 	private static getAllFilesSortedByLikelihood(id: FullID, app: App, hints: NoteID[] = []) {
 		// Note: finding the index and then inserting at index 0 is not necessarily more efficient.
-		return app.vault.getFiles().sort((fileA, fileB) => {
+		return app.vault.getMarkdownFiles().sort((fileA, fileB) => {
 			if (fileA.path == id.noteID)
 				return -1;
 			if (fileB.path == id.noteID)

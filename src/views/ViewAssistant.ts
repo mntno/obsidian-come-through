@@ -1,16 +1,24 @@
+import { Env } from "env";
+import { ItemView } from "obsidian";
+import { CssClass } from "renderings/dom-constants";
+import { MarkupAssistant } from "renderings/MarkupAssistant";
+
 export class ViewAssistant {
 
 	private markdownViewRootEl: HTMLDivElement | undefined;
+	private previewView: HTMLDivElement | undefined;
 	private previewSizerEl: HTMLDivElement | undefined;
 
-	public init(viewRootEl: HTMLElement) {
+	public init(view: ItemView) {
 		this.deinit();
 
-		this.markdownViewRootEl = viewRootEl.createDiv({ cls: "markdown-reading-view" }, (readerViewEl) => {
-			readerViewEl.createDiv({ cls: ViewAssistant.markdownPreviewClasses }, (previewViewEl) => {
-				this.previewSizerEl = previewViewEl.createDiv({ cls: ViewAssistant.markdownSizer }, (el) => {
-					el.createDiv({ cls: ViewAssistant.markdownPusher });
-					el.createDiv({ cls: ViewAssistant.markdownMod });
+		view.containerEl.addClass(CssClass.Plugin.WORKSPACE_LEAF_CONTENT);
+
+		this.markdownViewRootEl = view.contentEl.createDiv({ cls: CssClass.MarkdownView.READING() }, (readerViewEl) => {
+			this.previewView = readerViewEl.createDiv({ cls: CssClass.MarkdownView.PREVIEW() }, (previewViewEl) => {
+				this.previewSizerEl = previewViewEl.createDiv({ cls: CssClass.MarkdownView.SIZER() }, (el) => {
+					el.createDiv({ cls: CssClass.MarkdownView.PUSHER() });
+					el.createDiv({ cls: CssClass.MarkdownView.MOD() });
 				});
 			});
 		});
@@ -39,48 +47,45 @@ export class ViewAssistant {
 		return this.previewSizerEl;
 	}
 
-	public createH1(o: DomElementInfo | string) {
-		this.contentEl.createDiv({ cls: "el-h1" }, el => {
-			el.createEl("h1", o);
+	public get scrollContainer() {
+		return this.previewView;
+	}
+
+	public adjustAvailableVerticalScrolling() {
+		if (!this.scrollContainer || !this.previewSizerEl)
+			return;
+
+		const containerHeight = this.scrollContainer.clientHeight;
+		const paddingBottom = Math.floor(containerHeight * 0.5);
+		const minHeight = Math.floor(containerHeight * 0.53);
+
+		this.previewSizerEl.setCssStyles({
+			"paddingBottom": `${paddingBottom}px`,
+			"minHeight": `${minHeight}px`,
 		});
+
+		Env.log.view(`ViewAssistant:adjustAvailableVerticalScrolling: \`padding-bottom\`: "${paddingBottom}px", \`min-height\`: "${minHeight}px"`);
+	}
+
+	public createEl<K extends keyof HTMLElementTagNameMap>(tag: K, o?: DomElementInfo | string, callback?: (el: HTMLElementTagNameMap[K]) => void): HTMLElementTagNameMap[K] {
+		return MarkupAssistant.createWrappedEl(this.contentEl, tag, o, callback);
 	}
 
 	public createPara(o?: DomElementInfo | string) {
-		return this.contentEl.createDiv({ cls: "el-p" }).createEl("p", o);
+		return MarkupAssistant.createWrappedPara(this.contentEl, o);
+	}
+
+	public createParaWrapper() {
+		return MarkupAssistant.createElWrapper(this.contentEl, "p");
 	}
 
 	public createTable() {
 		const container = this.contentEl.createDiv({
-			cls: "el-table",
+			cls: MarkupAssistant.classForEl("table"),
 			attr: {
 				//"dir": "ltr"
 			}
 		});
 		return container.createEl("table");
 	}
-
-	private static readonly markdownPreviewClasses = [
-		"markdown-preview-view",
-		"markdown-rendered",
-		"node-insert-event",
-		"is-readable-line-width",
-		"allow-fold-headings",
-		"allow-fold-lists",
-		"show-indentation-guide",
-		"show-properties",
-	];
-
-	private static readonly markdownSizer = [
-		"markdown-preview-sizer",
-		"markdown-preview-section",
-	];
-
-	private static readonly markdownPusher = [
-		"markdown-preview-pusher"
-	];
-
-	private static readonly markdownMod = [
-		"mod-header",
-		"mod-ui"
-	];
 }

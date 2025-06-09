@@ -57,8 +57,6 @@ export class CardDeclaration implements CardDeclarable {
 
 export class CardDeclarationAssistant extends Declaration {
 
-	//#region
-
 	public static fromFrontmatter(maybeDeclaration: Record<string, unknown>, incompleteCallback?: (incomplete: DefaultableCardDeclarable, position: DeclarationRange) => void) {
 		if (this.conformsToDeclarable(maybeDeclaration))
 			return new CardDeclaration(maybeDeclaration.id, maybeDeclaration.side, IDScope.UNIQUE, maybeDeclaration.deckID);
@@ -80,11 +78,11 @@ export class CardDeclarationAssistant extends Declaration {
 		onParseError?: YamlParseErrorCallback,
 		incompleteCallback?: (incomplete: DefaultableCardDeclarable, position: DeclarationRange) => void) {
 
-		const location = this.contentOfCodeBlock(source);
-		if (!location)
+		const info = super.parseAndCheckCodeBlock(source);
+		if (!info)
 			return null;
 
-		const maybeDeclaration = this.tryParseYaml(this.slice(source, location), onParseError);
+		const maybeDeclaration = this.tryParseYaml(info.content, onParseError);
 		if (!maybeDeclaration)
 			return null;
 
@@ -92,12 +90,10 @@ export class CardDeclarationAssistant extends Declaration {
 			return new CardDeclaration(maybeDeclaration.id, maybeDeclaration.side, IDScope.UNIQUE, maybeDeclaration.deckID);
 
 		if (CardDeclarationAssistant.conformsToDefaultable(maybeDeclaration) && incompleteCallback)
-			incompleteCallback(maybeDeclaration, location);
+			incompleteCallback(maybeDeclaration, info.location satisfies DeclarationRange);
 
 		return null;
 	}
-
-	//#endregion
 
 	//#region
 

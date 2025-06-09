@@ -51,6 +51,69 @@ export class DeclarationParser extends FileParser {
 
 	protected static readonly FULL_ID_REGEX = /(front|f|back|b)@([^\s]+)/i;
 
+	/**
+		* Returns `true` as soon as any hint of a declaration is found in {@link file};
+		*
+		* @todo This method returns `true` as soon as a code block is found — irregardless of its language.
+		* @todo This method is somewhat redundant with {@link getAllIDsFromMetadata} in where they look for declarations.
+		*
+		* @param file
+		* @param app
+		* @param fileContent If content is known, this method can accurately determine whether {@link file} contains declarations.
+		* @returns
+		*/
+	public static containsDeclarations(file: TFile, app: App, fileContent?: string) {
+
+		let cache;
+		try {
+		 cache = this.fileCacheOrThrow(app, file);
+		}
+		catch (error) {
+			console.error(error);
+			return false;
+		}
+
+		const noteID = asNoteID(file);
+
+		// Check frontmatter for explicit declaration
+		if (cache.frontmatter) {
+			for (const key of Declaration.supportedFrontmatterKeys)
+				if (Object.hasOwn(cache.frontmatter, key))
+					return true;
+		}
+
+		// Check there headings that contain an ID
+		if (cache.headings) {
+			for (const currentHeading of cache.headings)
+				if (this.findFullIDInText(currentHeading.heading, noteID))
+					return true;
+		}
+
+		if (cache.sections) {
+			for (const section of cache.sections) {
+				if (this.isCodeSection(section)) {
+					if (fileContent) {
+						const info = this.parseCodeBlock(this.extractContentFromSection(section, fileContent));
+						if (info && Declaration.supportedCodeBlockLanguages.includes(info.language))
+							return true;
+					}
+					else {
+						// It's not possible to get the language of a code block without reading the file content, which is async, and this method must be sync.
+						// So true is returned as soon as a code block is found, even though it may not be a declaration.
+						return true;
+					}
+				}
+			}
+		}
+
+		return false;
+	}
+
+	public static async containsDeclarationsAsync(file: TFile, app: App) {
+		const fileContent = await this.cachedRead(app, file)
+		return this.containsDeclarations(file, app, fileContent);
+	}
+
 	public static async getAllIDsInFile(file: TFile, app: App, filter?: IDFilter) {
 		return this.getAllIDsFromMetadata(
 			asNoteID(file),
@@ -60,13 +123,16 @@ export class DeclarationParser extends FileParser {
 	}
 
 	/**
-	 * Finds all declared {@link FullID|ids} in {@link fileContent} of {@link noteID} based on the provided {@link cache}.
-	 * @param noteID
-	 * @param fileContent
-	 * @param cache The cache for the {@link file}
-	 * @param filter
-	 * @returns
-	 */
+		* Finds all declared {@link FullID|ids} in {@link fileContent} of {@link noteID} based on the provided {@link cache}.
+		*
+		* @see {@link containsDeclarations}
+		*
+		* @param noteID
+		* @param fileContent
+		* @param cache The cache for the {@link file}
+		* @param filter
+		* @returns
+		*/
 	public static getAllIDsFromMetadata(noteID: NoteID, fileContent: string, cache: CachedMetadata, filter?: IDFilter) {
 
 		const ids: FullID[] = [];
@@ -92,7 +158,7 @@ export class DeclarationParser extends FileParser {
 			}
 		};
 
-		// Check frontmatter for card declaration
+		// Check frontmatter for explicit declaration
 		if (cache.frontmatter) {
 			const declaration = this.getDeclarationFromFrontmatter(cache.frontmatter, noteID, parseInfo);
 			if (declaration) {
@@ -102,7 +168,7 @@ export class DeclarationParser extends FileParser {
 			}
 		}
 
-		// Look for ID declarations in headings
+		// Check there headings that contain an ID
 		for (const currentHeading of cache.headings ?? []) {
 			const id = this.findFullIDInText(currentHeading.heading, noteID);
 			if (id && !checkExistance(id)) {
@@ -192,7 +258,7 @@ export class DeclarationParser extends FileParser {
 		if (!this.isCodeSection(section))
 			return null;
 
-		const source = fileContent.slice(section.position.start.offset, section.position.end.offset);
+		const source = FileParser.extractContentFromSection(section, fileContent);
 
 		return CardDeclarationAssistant.parseCodeBlock(
 			source,

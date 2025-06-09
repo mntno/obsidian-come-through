@@ -2,13 +2,14 @@ import { CardDeclarationAssistant } from "declarations/CardDeclaration";
 import { CommandDeclarationAssistant } from "declarations/CommandDeclaration";
 import { Declaration } from "declarations/Declaration";
 import { MarkdownRenderChild, setIcon } from "obsidian";
-import { AlternateHeadingsRenderer } from "renderings/AlternateHeadingsRenderer";
-import { CardDeclarationRenderer } from "renderings/CardDeclarationRenderer";
-import { DeclarationErrorRenderer } from "renderings/DeclarationErrorRenderer";
-import { DataProvider, DeclarationChangedEvent, DeclarationRenderable, DeclarationRenderAssistant } from "renderings/DeclarationRenderable";
-import { HeadingAndDelimiterRenderer } from "renderings/HeadingAndDelimiterRenderer";
-import { HeadingIsFrontRenderer } from "renderings/HeadingIsFrontRenderer";
+import { AlternateHeadingsRenderer } from "./AlternateHeadingsRenderer";
+import { CardDeclarationRenderer } from "./CardDeclarationRenderer";
+import { DeclarationErrorRenderer } from "./DeclarationErrorRenderer";
+import { DataProvider, DeclarationChangedEvent, DeclarationRenderable, DeclarationRenderAssistant } from "./DeclarationRenderable";
+import { HeadingAndDelimiterRenderer } from "./HeadingAndDelimiterRenderer";
+import { HeadingIsFrontRenderer } from "./HeadingIsFrontRenderer";
 import { PLUGIN_ICON } from "UIAssistant";
+import { Env } from "env";
 
 export class DeclarationRenderChild extends MarkdownRenderChild {
 
@@ -17,6 +18,11 @@ export class DeclarationRenderChild extends MarkdownRenderChild {
 
 		this.source = source;
 		this.dataProvider = dataProvider;
+	}
+
+	public override onunload(): void {
+		Env.log.d("DeclarationRenderChild:onunload");
+		super.onunload();
 	}
 
 	private contentContainerEl: HTMLDivElement;

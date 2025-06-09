@@ -1,5 +1,4 @@
-import { DeclarationRenderer, DeclarationRenderable, DeclarationRenderAssistant } from "renderings/DeclarationRenderable";
-import { HeadingAndDelimiterAssistant, HeadingAndDelimiterDeclarable } from "declarations/commands/HeadingAndDelimiter";
+import { DeclarationRenderer, DeclarationRenderable, DeclarationRenderAssistant } from "./DeclarationRenderable";
 import { CardDeclarationAssistant, DefaultableCardDeclarable } from "declarations/CardDeclaration";
 
 export class CardDeclarationRenderer
@@ -15,7 +14,9 @@ export class CardDeclarationRenderer
 
 		const rowID = body.createEl("tr");
 		rowID.createEl("td", { text: "ID" });
-		rowID.createEl("td", { text: this.declarable.id });
+		rowID.createEl("td", {
+			text: CardDeclarationAssistant.conformsToDeclarable(this.declarable) ? this.declarable.id : ""
+		});
 
 		const rowSide = body.createEl("tr");
 		rowSide.createEl("td", { text: "Side" });

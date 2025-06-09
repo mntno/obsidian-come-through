@@ -32,6 +32,14 @@ export type SectionRange = {
 	end: SectionCache | CacheItem | null;
 }
 
+export type CodeBlockInfo = {
+	/** May be an empty string if language is not specified. */
+	language: string;
+	/** The location of the content relative to the first tick of the block. */
+	location: { start: number, end: number};
+	content: string;
+}
+
 /** Represents the unlimited range. */
 export const FullSectionRange: SectionRange = {
 	start: null,
@@ -105,4 +113,42 @@ export abstract class FileParser {
 	protected static isSectionType(cache: CacheItem, type: string): cache is SectionCache {
 		return this.isSectionCache(cache) && cache.type === type;
 	}
+
+	/**
+	 * @todo Method expects sufficient {@link fileContent} length to slice with {@link section}'s location.
+	 * @param section
+	 * @param fileContent The full content of the file the section belongs to.
+	 * @returns
+	 */
+	protected static extractContentFromSection(section: SectionCache, fileContent: string) {
+		return fileContent.slice(section.position.start.offset, section.position.end.offset);
+	}
+
+	/**
+	 * @todo This method does not support code blocks that start with four characters.
+	 * @param source The code block including the three ticks at the beginning and end. See {@link extractContentFromSection}.
+	 * @returns `null` is {@link source} is not a code block.
+	 */
+	public static parseCodeBlock(source: string): CodeBlockInfo | null {
+		const firstLine = source.split("\n", 1).first();
+		if (!firstLine)
+			return null;
+
+		// Make sure there are at least three ticks/tildes on first line
+		if (firstLine.length < FileParser.CODE_BLOCK_MARKER_LENGTH)
+			return null;
+
+		const language = firstLine.slice(FileParser.CODE_BLOCK_MARKER_LENGTH).trim();
+		const location = {
+			start: firstLine.length + 1, // Add \n back
+			end: source.length - FileParser.CODE_BLOCK_MARKER_LENGTH
+		};
+
+		return {
+			language,
+			location,
+			content: source.slice(location.start, location.end),
+		};
+	}
+	private static readonly CODE_BLOCK_MARKER_LENGTH = 3;
 }

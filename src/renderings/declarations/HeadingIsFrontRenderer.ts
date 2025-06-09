@@ -1,5 +1,5 @@
 import { HeadingIsFrontAssistant, HeadingIsFrontDeclarable } from "declarations/commands/HeadingIsFront";
-import { DeclarationRenderable, DeclarationRenderAssistant, DeclarationRenderer } from "renderings/DeclarationRenderable";
+import { DeclarationRenderable, DeclarationRenderAssistant, DeclarationRenderer } from "./DeclarationRenderable";
 
 export class HeadingIsFrontRenderer
 	extends DeclarationRenderer<HeadingIsFrontDeclarable>

@@ -1,13 +1,15 @@
-import { PluginSettingTab, Setting, Plugin, Platform } from "obsidian";
+import { PluginSettingTab, Setting, Plugin } from "obsidian";
 import { PLUGIN_NAME } from "UIAssistant";
 
 export interface PluginSettings {
 	uiPrefix: string;
 	hideCardSectionMarker: boolean;
 	hideDeclarationInReadingView: boolean;
+	/** Defines the time duration in seconds after which "removed" metadata items are eligible for permanent deletion. Items with a "removed date" property older than the current time minus this threshold will be purged. Must be a non-negative integer. */
+	removedItemsPurgeThreshold: number;
 }
 
-type SettingsChanged = (settings: PluginSettings) => void;
+export type SettingsChanged = (settings: PluginSettings, isExternal: boolean) => void;
 
 export class SettingsManager {
 	public settings: PluginSettings;
@@ -19,16 +21,20 @@ export class SettingsManager {
 		uiPrefix: PLUGIN_NAME,
 		hideCardSectionMarker: false,
 		hideDeclarationInReadingView: false,
+		removedItemsPurgeThreshold: 24 * 60 * 60,
 	};
 
 	public constructor(settings: PluginSettings, save: (settings: PluginSettings) => Promise<void>) {
 		this.settings = settings;
-		this.save = () => save(this.settings);
+		this.save = async () => {
+			await save(this.settings);
+			this.notifyOnChangedListeners(false);
+		};
 	}
 
 	public onSettingsChangedExternally(settings: PluginSettings) {
 		this.settings = settings;
-		this.registeredChangedCallbacks.forEach(cb => cb(this.settings));
+		this.notifyOnChangedListeners(true);
 	}
 
 	public registerOnChangedCallback(evt: SettingsChanged) {
@@ -38,6 +44,10 @@ export class SettingsManager {
 
 	public unregisterOnChangedCallback(evt: SettingsChanged) {
 		this.registeredChangedCallbacks = this.registeredChangedCallbacks.filter(callback => callback !== evt);
+	}
+
+	private notifyOnChangedListeners(isExternal: boolean) {
+		this.registeredChangedCallbacks.forEach(cb => cb(this.settings, isExternal));
 	}
 
 	private registeredChangedCallbacks: SettingsChanged[] = [];
@@ -51,7 +61,10 @@ export class SettingTab extends PluginSettingTab {
 		this.settingsManager = settingsManager;
 	}
 
-	private onChangedCallback = () => this.display();
+	private onChangedCallback: SettingsChanged = (_, isExternal) => {
+		if (isExternal)
+			this.display();
+	}
 
 	public display(): void {
 		this.settingsManager.registerOnChangedCallback(this.onChangedCallback);

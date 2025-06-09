@@ -1,3 +1,4 @@
+import { FileParser } from "FileParser";
 import { parseYaml, stringifyYaml } from "obsidian";
 import { isObject, isString } from "TypeAssistant";
 import { UniqueID } from "UniqueID";
@@ -18,7 +19,10 @@ const DeckablePropertyName = {
 	DECK_ID: "deckID",
 };
 
-/** Locates the portion of a string that contains the raw declaration string. */
+/**
+	* Locates the portion of a string that contains the raw declaration string.
+	* @todo Remove. See types in {@link FileParser}
+	*/
 export interface DeclarationRange {
 	start: number,
 	end: number,
@@ -44,30 +48,27 @@ export abstract class Declaration {
 	}
 
 	/**
-	 * @param source The code block including the three ticks at the beginning and end.
-	 * @returns The location of the block's content within {@link source} or `null` if {@link source} or code "language" is unexpected.
-	*/
-	protected static contentOfCodeBlock(source: string): DeclarationRange | null {
-		const firstLine = source.split("\n", 1).first();
-		if (!firstLine)
+	 	* Checks if this a code block with one of the expected languages; if so, parses it.
+		* @param source The code block including the three ticks at the beginning and end.
+		* @returns `null` is {@link source} is not a code block or if the block's language is unexpected.
+		*/
+	protected static parseAndCheckCodeBlock(source: string) {
+		const info = FileParser.parseCodeBlock(source);
+
+		if (info && !this.supportedCodeBlockLanguages.includes(info.language))
 			return null;
 
-		const language = firstLine.slice(this.CODE_BLOCK_MARKER_LENGTH).trim();
-		if (language !== this.LANGUAGE && language !== this.LANGUAGE_SHORT)
-			return null;
-
-		const secondLineOffset = firstLine.length + 1; // Add \n back
-		return { start: secondLineOffset, end: source.length - this.CODE_BLOCK_MARKER_LENGTH }
+		return info;
 	}
 	private static readonly CODE_BLOCK_MARKER_LENGTH = 3;
 
 	/**
-	* Case insensitive.
-	*
-	* @param yaml Will be converted to lower case before parsing.
-	* @param onParseError
-	* @returns `null` if YAML parsing failed, in which case {@link onParseError} will be invoked.
-	*/
+		* Case insensitive.
+		*
+		* @param yaml Will be converted to lower case before parsing.
+		* @param onParseError
+		* @returns `null` if YAML parsing failed, in which case {@link onParseError} will be invoked.
+		*/
 	public static tryParseYaml(yaml: string, onParseError?: YamlParseErrorCallback) {
 		let parsedObject: Record<string, any> | null = null;
 

@@ -34,13 +34,11 @@ export class UIAssistant {
     checked?: boolean,
     icon?: string,
     prefix?: boolean,
+    isLabel?: boolean,
     onClick?: (evt: MouseEvent | KeyboardEvent) => any
     callback?: (item: MenuItem) => any,
   }): Menu {
     const {
-      section,
-      checked,
-      onClick,
       callback,
     } = options || {};
 
@@ -57,6 +55,7 @@ export class UIAssistant {
     checked?: boolean,
     icon?: string,
     prefix?: boolean,
+    isLabel?: boolean,
     onClick?: (evt: MouseEvent | KeyboardEvent) => any
   }): MenuItem {
     const {
@@ -65,10 +64,12 @@ export class UIAssistant {
       onClick,
       icon = PLUGIN_ICON,
       prefix = true,
+      isLabel = false,
     } = options || {};
 
     item.setTitle(prefix ? this.contextulize(title) : title);
     item.setIcon(icon);
+		item.setIsLabel(isLabel);
 
     if (checked !== undefined)
       item.setChecked(checked);

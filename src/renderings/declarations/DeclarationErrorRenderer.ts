@@ -1,5 +1,5 @@
-import { DeclarationRenderable, DeclarationRenderAssistant, DeclarationRenderer } from "renderings/DeclarationRenderable";
-import { Declarable, Declaration } from "declarations/Declaration";
+import { DeclarationRenderable, DeclarationRenderAssistant, DeclarationRenderer } from "./DeclarationRenderable";
+import { Declarable } from "declarations/Declaration";
 
 
 export class DeclarationErrorRenderer

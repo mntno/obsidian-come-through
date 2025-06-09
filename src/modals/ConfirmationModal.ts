@@ -1,3 +1,4 @@
+import t from "Localization";
 import { App, Modal, Setting } from "obsidian";
 import { Platform } from 'obsidian';
 
@@ -11,7 +12,7 @@ export class ConfirmationModal extends Modal {
 	constructor(app: App) {
 		super(app);
 
-		this.setTitle("External change detected");
+		this.setTitle(t.modals.confirmation.title);
 
 		new Setting(this.contentEl).setDesc(createFragment((f) => {
 			f.createEl("i", { text: "Plugin: Come Through" });

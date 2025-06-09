@@ -1,6 +1,6 @@
 import { FullID } from 'FullID';
 import { CardIDDataTuple, DataStore, StatisticsData } from 'DataStore';
-import { createEmptyCard, fsrs, generatorParameters, Rating, FSRS, Card, State, Grade, TypeConvert, default_request_retention, default_maximum_interval, default_enable_fuzz, default_enable_short_term } from 'ts-fsrs';
+import { createEmptyCard, fsrs, generatorParameters, Rating, FSRS, Card, State, Grade, TypeConvert, default_request_retention, default_maximum_interval, default_enable_fuzz, default_enable_short_term, default_learning_steps, default_relearning_steps } from 'ts-fsrs';
 
 type DataItem = {
   id: FullID;
@@ -18,6 +18,8 @@ export class Scheduler {
       enable_fuzz: default_enable_fuzz,
       enable_short_term: default_enable_short_term,
       maximum_interval: default_maximum_interval,
+      learning_steps: default_learning_steps,
+      relearning_steps: default_relearning_steps,
       // w: default_w,
     });
     this.fsrs = fsrs(params);
@@ -47,6 +49,8 @@ export class Scheduler {
 
   /**
    * Get the next review item from {@link cards}.
+   *
+   * Not necessarily deterministic.
    *
    * @param cards
    * @param reviewDate
@@ -270,12 +274,14 @@ export class Scheduler {
   private static asCard(s: StatisticsData): Card {
     return {
       due: TypeConvert.time(s.due),
-      stability: s.s,
-      difficulty: s.d,
-      elapsed_days: s.ed,
-      scheduled_days: s.sd,
-      reps: s.r,
-      lapses: s.l,
+      stability: s.s ?? 0,
+      difficulty: s.d ?? 0,
+      // TODO: Delete in ts-fsrs 6. Value not used.
+      elapsed_days: 0,
+      scheduled_days: s.sd ?? 0,
+      learning_steps: s.ls ?? 0,
+      reps: s.r ?? 0,
+      lapses: s.l ?? 0,
       state: s.st as State,
       last_review: s.lr ? TypeConvert.time(s.lr) : undefined,
     };
@@ -286,8 +292,8 @@ export class Scheduler {
       due: card.due.toISOString(),
       s: card.stability,
       d: card.difficulty,
-      ed: card.elapsed_days,
       sd: card.scheduled_days,
+      ls: card.learning_steps,
       r: card.reps,
       l: card.lapses,
       st: card.state,
@@ -295,12 +301,17 @@ export class Scheduler {
     } satisfies StatisticsData;
   }
 
+  /**
+   * Updates the properties of a {@link StatisticsData} object with the values from a {@link Card} object.
+   * @param s The {@link StatisticsData} object to update.
+   * @param card The {@link Card} object to source the new values from.
+   */
   private static setStatistics(s: StatisticsData, card: Card) {
     s.due = card.due.toISOString();
     s.s = card.stability;
     s.d = card.difficulty;
-    s.ed = card.elapsed_days;
     s.sd = card.scheduled_days;
+		s.ls = card.learning_steps;
     s.r = card.reps;
     s.l = card.lapses;
     s.st = card.state;

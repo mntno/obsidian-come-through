@@ -1,17 +1,18 @@
-import { DataStore, DataStoreRoot } from "DataStore";
 import { DeclarationManager } from "declarations/DeclarationManager";
+import { DataStore, DataStoreRoot } from "DataStore";
 import { DeclarationParser } from "declarations/DeclarationParser";
 import { ConfirmationModal } from "modals/ConfirmationModal";
 import { SelectDeckModal } from "modals/SelectDeckModal";
-import { Editor, Keymap, MarkdownFileInfo, MarkdownPostProcessorContext, MarkdownView, Menu, PaneType, Plugin, TFile } from "obsidian";
+import { Editor, Keymap, MarkdownPostProcessorContext, MarkdownView, PaneType, Plugin, TFile } from "obsidian";
 import { Scheduler } from "Scheduler";
 import { PluginSettings, SettingsManager, SettingTab } from "Settings";
 import { SyncManager } from "SyncManager";
-import { asNoteID } from "TypeAssistant";
 import { PLUGIN_ICON, UIAssistant } from "UIAssistant";
 import { UniqueID } from "UniqueID";
 import { DecksView } from "views/DecksView";
 import { ReviewView } from "views/ReviewView";
+import t from "Localization";
+import { DefinedContentView } from "views/DefinedContentView";
 
 interface PluginData {
 	settings: PluginSettings;
@@ -27,26 +28,36 @@ export default class ComeThroughPlugin extends Plugin {
 	private syncManager: SyncManager;
 
 	public async onload() {
-		//#region
 
 		this.pluginData = await ComeThroughPlugin.loadPluginData(this);
 		this.settingsManager = new SettingsManager(this.pluginData.settings, async (_settings) => await this.savePluginData());
 		this.ui = new UIAssistant(this.settingsManager);
-		this.dataStore = new DataStore(this.pluginData.data, async (_data) => await this.savePluginData());
+		this.dataStore = new DataStore(this.pluginData.data, this.pluginData.settings.removedItemsPurgeThreshold, async (_data) => await this.savePluginData());
 		this.scheduler = new Scheduler(this.dataStore);
 		this.syncManager = new SyncManager(this.dataStore, this.app, () => this.scheduler.createItem());
 
-		//#endregion
 
 		this.addSettingTab(new SettingTab(this, this.settingsManager));
+		this.addRibbonIcon(PLUGIN_ICON, this.ui.contextulize("Review"), (evt: MouseEvent) => {
+			this.openReviewView(Keymap.isModEvent(evt));
+		});
+
 		this.app.workspace.onLayoutReady(() => this.registerEvents());
 
 		for (const language of DeclarationManager.supportedCodeBlockLanguages) {
 			this.registerMarkdownCodeBlockProcessor(language, (source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext) => {
 				if (!this.settingsManager.settings.hideDeclarationInReadingView || UIAssistant.isInInLivePreview(this.app))
 					DeclarationManager.processCodeBlock(this.app, source, el, ctx, this.dataStore);
-			}, undefined);
+			}, -100); // Process this code block last, allowing other plugins to alter user input first.
+
+			// Register yaml highlighting. Seen while editing (comments, explicit strings, ...). TODO: This is CodeMirror 5 API.
+			window.CodeMirror.defineMode(language, (config) => window.CodeMirror.getMode(config, "text/x-yaml"));
+			this.register(() => {
+				window.CodeMirror.defineMode(language, (config) => window.CodeMirror.getMode(config, "null"));
+			});
 		}
+
+		// Views
 
 		this.registerView(
 			ReviewView.TYPE,
@@ -55,36 +66,49 @@ export default class ComeThroughPlugin extends Plugin {
 
 		this.registerView(
 			DecksView.TYPE,
-			(leaf) => new DecksView(leaf, this.dataStore)
+			(leaf) => new DecksView(leaf, this.settingsManager, this.dataStore)
 		);
 
-		this.addRibbonIcon(PLUGIN_ICON, this.ui.contextulize("Review"), (evt: MouseEvent) => {
-			this.openReviewView(Keymap.isModEvent(evt));
-		});
+		this.registerView(
+			DefinedContentView.TYPE,
+			(leaf) => new DefinedContentView(leaf, this.settingsManager, this.dataStore)
+		);
 
-		//#region Commands
+		// Commands
 
 		this.addCommand({
 			id: 'open-review',
-			name: 'Review',
+			name: t.commands.openReview.name,
 			callback: () => this.openReviewView(true)
 		});
 
 		this.addCommand({
 			id: 'open-decks',
-			name: 'Decks',
+			name: t.commands.openDecks.name,
 			callback: () => this.openDecksView(true)
 		});
 
 		this.addCommand({
+			id: 'view-defined-content-in-current-note',
+			name: t.commands.openDeclarations.name,
+			checkCallback: (checking: boolean) => {
+				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
+				if (markdownView && markdownView.file && DeclarationParser.containsDeclarations(markdownView.file, this.app)) {
+					if (!checking)
+						this.viewDefinedContent(markdownView.file, false);
+					return true
+				}
+				return false
+			}
+		});
+
+		this.addCommand({
 			id: 'generate-id-cursor',
-			name: 'Create a new id under cursor',
+			name: t.commands.generateId.name,
 			editorCallback: (editor: Editor, _view: MarkdownView) => {
 				editor.replaceRange(UniqueID.generateID(), editor.getCursor())
 			}
 		});
-
-		//#endregion
 	}
 
 	public onunload() {
@@ -92,6 +116,11 @@ export default class ComeThroughPlugin extends Plugin {
 			this.confirmationModal.forceClose();
 	}
 
+	/**
+	 * Handles external changes to the plugin's settings and data.
+	 * This is triggered when the data file is modified by an external source, such as a sync service.
+	 * It disables the internal sync manager, reloads the data, and prompts the user to accept the change.
+	 */
 	public async onExternalSettingsChange() {
 		if (!this.pluginData)
 			return;
@@ -134,6 +163,10 @@ export default class ComeThroughPlugin extends Plugin {
 
 	// public onUserEnable(): void {}
 
+	/**
+	 * Registers the necessary event listeners for the plugin to function.
+	 * This includes file events for synchronization and context menu events for user actions.
+	 */
 	private registerEvents() {
 
 		this.registerEvent(this.app.workspace.on("file-open", this.syncManager.open.bind(this.syncManager)));
@@ -145,11 +178,12 @@ export default class ComeThroughPlugin extends Plugin {
 			if (!(file instanceof TFile))
 				return;
 
-			const isFileIncluded = this.dataStore.getNote(asNoteID(file)) ? true : false;
+			const isFileIncluded = DeclarationParser.containsDeclarations(file, this.app);
 
-			if (isFileIncluded && (source === "file-explorer-context-menu" || source === "more-options" || source === "tab-header")) {
-				this.ui.addMenuItem(menu, "View flashcard info", {
-					onClick: async () => this.viewInfo(file)
+			if (isFileIncluded && (/*source === "file-explorer-context-menu" ||*/ source === "more-options" || source === "tab-header")) {
+				this.ui.addMenuItem(menu, t.actions.viewDeclarationsInFile, {
+					onClick: async (evt) => this.viewDefinedContent(file, Keymap.isModEvent(evt)),
+					section: "open",
 				});
 			}
 		}));
@@ -185,9 +219,9 @@ export default class ComeThroughPlugin extends Plugin {
 				this.dataStore,
 				[...[UIAssistant.allDecksOptionItem()], ...allDecks],
 				async (deck, evt) => {
-					await openView(Keymap.isModEvent(evt), { deckID: deck.id });
+					await openView(Keymap.isModEvent(evt), ReviewView.createViewState(deck.id));
 				});
-			modal.setPlaceholder("Select deck to review");
+			modal.setPlaceholder(t.modals.selectDeck.placeholder);
 			modal.open();
 		}
 		else {
@@ -195,13 +229,14 @@ export default class ComeThroughPlugin extends Plugin {
 		}
 	}
 
-	private async viewInfo(file: TFile) {
-
-		const { ids } = await DeclarationParser.getAllIDsInFile(file, this.app);
-
-		let info: string = `${file.basename} defines ${ids.length} card sides\n\n`;
-		info += ids.map(id => this.dataStore.cardInfo(id)).join("\n\n");
-		this.ui.displayNotice(info, { prefix: false, preventDismissal: true });
+	private async viewDefinedContent(file: TFile, paneType: PaneType | boolean) {
+		await this.app.workspace.getLeaf(paneType).setViewState({
+			type: DefinedContentView.TYPE,
+			state: DefinedContentView.createViewState(file),
+			active: true,
+			pinned: undefined,
+			group: undefined,
+		});
 	}
 
 	private static async loadPluginData(plugin: Plugin): Promise<PluginData> {

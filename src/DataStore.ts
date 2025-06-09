@@ -1,6 +1,6 @@
 import { CardID, FullID, NoteID, DeckID, DeckableFullID } from "FullID";
 import { deepEqual } from 'fast-equals';
-import { asNoteID } from "TypeAssistant";
+import { asNoteID, isDate, isString } from "TypeAssistant";
 import { UniqueID } from "UniqueID";
 
 //#region Data structure
@@ -29,10 +29,12 @@ interface NoteData {
 }
 
 type RemovedData = Record<NoteID, RemovedNoteData>;
+/** Serves as a reminder that dates are read and stored as ISO strings. */
+type DateString = string;
 
 interface RemovedCardData extends CardData {
 	/** Date marked for removal. */
-	date: Date,
+	date: DateString;
 }
 
 interface RemovedNoteData {
@@ -57,10 +59,10 @@ export interface StatisticsData {
 	s: number;
 	/** difficulty */
 	d: number;
-	/** elapsed_days */
-	ed: number;
 	/** scheduled_days */
 	sd: number;
+	/** learning_steps */
+	ls: number;
 	/** reps */
 	r: number;
 	/** lapses */
@@ -80,6 +82,11 @@ export type CardPredicate = (id: FullID, data: CardData) => boolean;
 export interface CardIDDataTuple {
 	id: FullID;
 	data: CardData;
+}
+
+interface RemovedCardIDDataTuple {
+	id: FullID;
+	data: RemovedCardData;
 }
 
 export class CardEditor {
@@ -165,9 +172,12 @@ export class DataStore {
 
 	private data: DataStoreRoot;
 	private readonly saveData: (data: DataStoreRoot) => Promise<void>;
+	/** The minimum number of seconds items will retained as removed items before they are deleted. */
+	private purgeThreshold: number;
 
-	public constructor(data: DataStoreRoot, saveData: (data: DataStoreRoot) => Promise<void>) {
+	public constructor(data: DataStoreRoot, purgeThreshold: number, saveData: (data: DataStoreRoot) => Promise<void>) {
 		this.data = data;
+		this.purgeThreshold = purgeThreshold;
 		this.saveData = saveData;
 	}
 
@@ -281,6 +291,9 @@ export class DataStore {
 
 	/**
 	* Deletes {@link CardData} with {@link id} from {@link DataStoreRoot.removed} and returns it.
+	*
+	* Also removes its parent if it no longer has any children. Thus there is no need to call {@link deleteRemovedNote}
+	*
 	* @param id
 	* @param throwIfNotFound
 	* @returns The removed {@link CardData}, or `null` if {@link id} was not found.
@@ -301,13 +314,17 @@ export class DataStore {
 		return removedCard;
 	}
 
-	public deleteAllRemovedCards(removedBeforeDate?: Date) {
+	/**
+	 * @param removedBeforeDate Delete only items that were removed before this date. Set to `undefined` to delete all items.
+	 */
+	private deleteRemovedCards(removedBeforeDate?: Date) {
 		if (removedBeforeDate) {
-			for (const noteID of Object.keys(this.data.removed)) {
-				for (const [cardID, cardData] of Object.entries(this.data.removed[noteID].cs))
-					if (cardData.date.getTime() < removedBeforeDate.getTime())
-						this.deleteRemovedCard(StatisticsHelper.createFullID(noteID, cardID));
-			}
+			const time = removedBeforeDate.getTime();
+			this.getAllRemovedCards(undefined, (_cardID: CardID, data: RemovedCardData) => {
+				const date = StatisticsHelper.ensureDate(data.date);
+				console.assert(date, "Expected date parsable string.");
+				return date && date.getTime() < time ? true : false;
+			}).forEach(tuple => this.deleteRemovedCard(tuple.id));
 		}
 		else {
 			this.data.removed = { ...DataStore.DEFAULT_DATA.removed };
@@ -316,7 +333,7 @@ export class DataStore {
 	}
 
 	/**
-	 * First checks if the card already exists but is marked for removal. If so, adds it back as active.
+	 * First checks if the card already exists but is marked for deletion. If so, adds it back as active.
 	 * If not found, creates a new active card.
 	 * @param id
 	 * @param statisticsFactory
@@ -334,7 +351,7 @@ export class DataStore {
 
 		if (removedCard) {
 			this.deleteRemovedCard(removedCard.id, true);
-			cardToAdd = StatisticsHelper.toCardIDDataTuple(id, removedCard.data);
+			cardToAdd = StatisticsHelper.toCardIDDataTuple(id, StatisticsHelper.removedCardToCard(removedCard.data));
 		}
 		else {
 			const deckIDs = id instanceof DeckableFullID ? id.deckIDs : [];
@@ -618,7 +635,7 @@ export class DataStore {
 		noteFilter?: (noteID: NoteID, data: RemovedNoteData) => boolean,
 		cardFilter?: (cardID: CardID, data: RemovedCardData) => boolean) {
 
-		let cards: CardIDDataTuple[] = [];
+		let cards: RemovedCardIDDataTuple[] = [];
 
 		for (const [noteID, removedData] of Object.entries(this.data.removed)) {
 
@@ -632,7 +649,7 @@ export class DataStore {
 
 				cards.push({
 					id: FullID.create(noteID, cardID, true), // back sides are not stored
-					data: StatisticsHelper.removedCardToCard(card),
+					data: card
 				});
 			}
 		}
@@ -743,6 +760,8 @@ export class DataStore {
 
 	public async save() {
 		if (this._isDataDirty) {
+			const purgeRemovedBeforeDate = new Date((new Date()).getTime() - (this.purgeThreshold * 1000));
+			this.deleteRemovedCards(purgeRemovedBeforeDate);
 			await this.saveData(this.data);
 			this._isDataDirty = false;
 			this.triggerDataChanged();
@@ -839,6 +858,20 @@ export class DataStore {
 
 class StatisticsHelper {
 
+	public static ensureDate(value: DateString | Date) {
+		if (isString(value))
+			value = new Date(value);
+		return isDate(value) ? value : null;
+	}
+
+	public static ensureDateString(value: DateString | Date | undefined) {
+		if (value === undefined)
+			value = new Date();
+		if (isDate(value))
+			value = value.toISOString();
+		return value as DateString;
+	}
+
 	public static isNoteEmpty(note: NoteData) {
 		return Object.keys(note.cs).length == 0;
 	}
@@ -871,6 +904,7 @@ class StatisticsHelper {
 		} satisfies RemovedNoteData;
 	}
 
+	/** Removes properties of {@link RemovedCardData} that don't exist in {@link CardData}. This should be done, for example, before serializing the JSON.  */
 	public static removedCardToCard(removedCard: RemovedCardData): CardData {
 		const {
 			date,
@@ -881,7 +915,7 @@ class StatisticsHelper {
 	public static cardToRemovedCard(card: CardData, removalDate?: Date): RemovedCardData {
 		return {
 			...card,
-			date: removalDate ?? new Date(),
+			date: StatisticsHelper.ensureDateString(removalDate),
 		} satisfies RemovedCardData;
 	}
 
