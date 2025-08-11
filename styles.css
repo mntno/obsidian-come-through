@@ -155,3 +155,7 @@ div.come-through-workspace-leaf-content[data-type='come-through-view-defined-con
 	font-variant: var(--h2-variant);
 	font-weight: var(--h2-weight);
 }
+
+div.come-through-workspace-leaf-content[data-type='come-through-view-defined-content'] :lang(th) {
+  font-size: 1.25rem;
+}

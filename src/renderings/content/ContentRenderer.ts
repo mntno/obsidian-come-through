@@ -47,7 +47,7 @@ export class ContentRenderer extends RecycleComponent {
 
 		/** These will always run, and before any custom ones. */
 		this.defaultProcessors = [
-			new HtmlElementWrapperProcessor(),
+			new HtmlElementWrapperProcessor({ applyLangTagsToNonLatinScripts: false }),
 			new LinkProcessor(),
 			new AudioProcessor(),
 			new VideoProcessor(),

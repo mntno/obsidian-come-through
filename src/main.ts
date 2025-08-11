@@ -1,18 +1,19 @@
-import { DeclarationManager } from "declarations/DeclarationManager";
 import { DataStore, DataStoreRoot } from "DataStore";
+import { DeclarationManager } from "declarations/DeclarationManager";
 import { DeclarationParser } from "declarations/DeclarationParser";
+import { Env } from "env";
+import t from "Localization";
 import { ConfirmationModal } from "modals/ConfirmationModal";
 import { SelectDeckModal } from "modals/SelectDeckModal";
 import { Editor, Keymap, MarkdownPostProcessorContext, MarkdownView, PaneType, Plugin, TFile } from "obsidian";
-import { Scheduler } from "Scheduler";
-import { PluginSettings, SettingsManager, SettingTab } from "Settings";
+import { FsrsSchedulerConfig, Scheduler } from "Scheduler";
+import { PluginSettings, SettingsChangedInfo, SettingsManager, SettingTab } from "Settings";
 import { SyncManager } from "SyncManager";
 import { PLUGIN_ICON, UIAssistant } from "UIAssistant";
 import { UniqueID } from "UniqueID";
 import { DecksView } from "views/DecksView";
-import { ReviewView } from "views/ReviewView";
-import t from "Localization";
 import { DefinedContentView } from "views/DefinedContentView";
+import { ReviewView } from "views/ReviewView";
 
 interface PluginData {
 	settings: PluginSettings;
@@ -20,22 +21,36 @@ interface PluginData {
 }
 
 export default class ComeThroughPlugin extends Plugin {
-	private pluginData: PluginData;
-	private settingsManager: SettingsManager;
-	private scheduler: Scheduler;
-	private ui: UIAssistant;
 	private dataStore: DataStore;
+	private scheduler: Scheduler;
+	private settingsManager: SettingsManager;
 	private syncManager: SyncManager;
+	private ui: UIAssistant;
+
+	/** Must referene the latest data before {@link savePluginData} is called. Only needed to hold references in order to pass to {@link Plugin.saveData}, see {@link savePluginData}. */
+	private latestPluginDataRef: PluginData;
 
 	public async onload() {
 
-		this.pluginData = await ComeThroughPlugin.loadPluginData(this);
-		this.settingsManager = new SettingsManager(this.pluginData.settings, async (_settings) => await this.savePluginData());
-		this.ui = new UIAssistant(this.settingsManager);
-		this.dataStore = new DataStore(this.pluginData.data, this.pluginData.settings.removedItemsPurgeThreshold, async (_data) => await this.savePluginData());
-		this.scheduler = new Scheduler(this.dataStore);
-		this.syncManager = new SyncManager(this.dataStore, this.app, () => this.scheduler.createItem());
+		this.latestPluginDataRef = await ComeThroughPlugin.loadPluginData(this);
 
+		this.settingsManager = new SettingsManager(
+			this.latestPluginDataRef.settings,
+			async (settings) => {
+				this.latestPluginDataRef.settings = settings;
+				await this.savePluginData();
+			},
+			this.onSettingsSaved.bind(this)
+		);
+
+		this.dataStore = new DataStore(this.latestPluginDataRef.data, this.latestPluginDataRef.settings.removedItemsPurgeThreshold, async (data) => {
+			this.latestPluginDataRef.data = data;
+			await this.savePluginData();
+		});
+
+		this.scheduler = new Scheduler(this.dataStore, this.createSchedulerConfig());
+		this.syncManager = new SyncManager(this.dataStore, this.app, () => this.scheduler.createItem());
+		this.ui = new UIAssistant(this.settingsManager);
 
 		this.addSettingTab(new SettingTab(this, this.settingsManager));
 		this.addRibbonIcon(PLUGIN_ICON, this.ui.contextulize("Review"), (evt: MouseEvent) => {
@@ -96,9 +111,9 @@ export default class ComeThroughPlugin extends Plugin {
 				if (markdownView && markdownView.file && DeclarationParser.containsDeclarations(markdownView.file, this.app)) {
 					if (!checking)
 						this.viewDefinedContent(markdownView.file, false);
-					return true
+					return true;
 				}
-				return false
+				return false;
 			}
 		});
 
@@ -116,47 +131,61 @@ export default class ComeThroughPlugin extends Plugin {
 			this.confirmationModal.forceClose();
 	}
 
-	/**
-	 * Handles external changes to the plugin's settings and data.
-	 * This is triggered when the data file is modified by an external source, such as a sync service.
-	 * It disables the internal sync manager, reloads the data, and prompts the user to accept the change.
-	 */
+	/** This is triggered when the data file is modified by an external source, such as a sync service. */
 	public async onExternalSettingsChange() {
-		if (!this.pluginData)
-			return;
+		Env.log.d("Plugin:onExternalSettingsChange");
 
-		this.syncManager.setDisabled(); // Disable as soon as possible before any file events are fired.
+		const overwrittenDataOnDisk = await ComeThroughPlugin.loadPluginData(this);
+		this.settingsManager.onSettingsChangedExternally(overwrittenDataOnDisk.settings, (changed) => this.latestPluginDataRef.settings = changed);
 
-		this.pluginData = await ComeThroughPlugin.loadPluginData(this);
-		this.settingsManager.onSettingsChangedExternally(this.pluginData.settings);
+		this.syncManager.whileSuspended(() => {
 
-		this.dataStore.onDataChangedExternally(this.pluginData.data, (currentData: DataStoreRoot, commit: () => void) => {
+			// Four scenarios:
+			// 1. Explicit user data changed -> show modal.
+			// 	- If user accepts change, refresh in-memory data.
+			// 	- If user rejects change, revert the changes on disk.
+			// 2. Other data changed -> Accept change (as above) without user interaction.
+			// 3. No changes detected -> Do nothing.
 
-			// Prevent multiple modals opening.
-			if (!this.confirmationModal) {
-				this.confirmationModal = new ConfirmationModal(this.app);
-				this.confirmationModal.open();
-			}
+			this.dataStore.onDataChangedExternally(
+				overwrittenDataOnDisk.data,
+				(info, commit: () => void) => {
 
-			this.confirmationModal.onClosed = () => {
-				this.confirmationModal = undefined;
-			}
+					// Avoid writing to disk again if not needed as this method was already called because of a modification.
+					// The only time it's needed is when the user rejects the change.
+					const accept = () => {
+						this.latestPluginDataRef.data = info.changedData; // Update reference first because data change listeners will be called that might call `save`.
+						commit();
+					};
 
-			this.confirmationModal.onButton1Click = () => {
-				// Use new data.
-				// If the data is changed externally several times before the user takes action, the intermediate external changes are ignored.
-				// No need to persist to disk here because the change has already occured.
-				commit();
-				this.syncManager.setEnabled();
-			};
+					const reject = () => {
+						this.latestPluginDataRef.data = info.currentData;
+						this.savePluginData(); // Note: calling `save` on `DataStore` will be a no-op because data is not dirty.
+					};
 
-			this.confirmationModal.onButton2Click = () => {
-				// Reverse change, use old data.
-				this.pluginData.data = currentData;
-				this.syncManager.setEnabled();
-				this.savePluginData();
-			};
+					// Only show modal if data explicitly created by the user has changed. Otherwise, automatically accept the changes.
+					// For example, if the modal is shown when the plugin merely has automatically purged a removed statistics item, the user will be confused because they didn't make any changes/rated.
+					if (info.activeChanged || info.collectionsChanged) {
 
+						// Prevent multiple modals opening (as external changes might occur while the modal is showing).
+						if (!this.confirmationModal) {
+							this.confirmationModal = new ConfirmationModal(this.app);
+							this.confirmationModal.onClosed = () => this.confirmationModal = undefined;
+							this.confirmationModal.open();
+						}
+
+						// Note: Several external changes might occur while the modal is showing. User accepting should apply the latest change. Therefore, overwrite events so that the latest variable values are used.
+						this.confirmationModal.onButton1Click = () => accept();
+						this.confirmationModal.onButton2Click = () => reject();
+					}
+					else {
+						Env.log.d(`\tAccepting data changes without showing modal.`);
+						accept();
+					}
+				}, () => {
+					Env.log.d(`\tNo data changes detected.`)
+				}
+			);
 		});
 	}
 	private confirmationModal?: ConfirmationModal;
@@ -241,17 +270,51 @@ export default class ComeThroughPlugin extends Plugin {
 
 	private static async loadPluginData(plugin: Plugin): Promise<PluginData> {
 		const data = await plugin.loadData(); // Returns `null` if file doesn't exist.
+
+		// Prepare a temporary settings object by merging top-level properties.
+		const mergedSettings = {
+			...SettingsManager.DEFAULT_DATA,
+			...data?.settings || {}
+		};
+
+		// Explicitly merge the nested `schedulers` object.
+		// This combines the default schedulers with any schedulers from the loaded data.
+		// This only adds the default scheduler object(s) if their keys are missing, but it doesn't go deeper than that, i.e., if a defaukt key is there but some of that objects keys are missing, those missing keys will not be added.
+		mergedSettings.schedulers = {
+			...SettingsManager.DEFAULT_DATA.schedulers,
+			...(data?.settings?.schedulers || {})
+		};
+
 		return {
 			...{},
 			...{
-				settings: { ...SettingsManager.DEFAULT_DATA, ...data?.settings || {} },
-				data: { ...DataStore.DEFAULT_DATA, ...data?.data || {} }
+				settings: mergedSettings,
+				data: {
+					...DataStore.DEFAULT_DATA,
+					...data?.data || {}
+				}
 			} satisfies PluginData
 		};
 	}
 
+	/** Writes {@link latestPluginDataRef} to disk. */
 	private async savePluginData() {
-		await this.saveData(this.pluginData);
+		await this.saveData(this.latestPluginDataRef);
 	}
 
+	private onSettingsSaved(changedInfo?: SettingsChangedInfo) {
+		switch (changedInfo) {
+			case "schedulerConfig":
+				this.scheduler.configure(this.createSchedulerConfig());
+				break;
+		}
+	}
+
+	private createSchedulerConfig() {
+		const config = this.settingsManager.defaultScheduler.config;
+		Env.assert(config);
+		return {
+			enableFuzz: config.enableFuzz,
+		} satisfies FsrsSchedulerConfig;
+	}
 }

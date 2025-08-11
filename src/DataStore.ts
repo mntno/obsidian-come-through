@@ -1,14 +1,12 @@
 import { CardID, FullID, NoteID, DeckID, DeckableFullID } from "FullID";
-import { deepEqual } from 'fast-equals';
+import { deepEqual, strictDeepEqual } from 'fast-equals';
 import { asNoteID, isDate, isString } from "TypeAssistant";
 import { UniqueID } from "UniqueID";
-
-//#region Data structure
+import { Env } from "env";
 
 export interface DataStoreRoot {
 	decks: DecksData;
 	active: NotesData;
-	archived: NotesData;
 	removed: RemovedData;
 }
 
@@ -70,12 +68,8 @@ export interface StatisticsData {
 	/** state */
 	st: number;
 	/** last_review ISO 8601. */
-	lr?: string;
+	lr: string | null;
 }
-
-//#endregion
-
-//#region Cards
 
 export type CardPredicate = (id: FullID, data: CardData) => boolean;
 
@@ -117,10 +111,6 @@ export class CardAlreadyExistsError extends Error {
 	}
 }
 
-//#endregion
-
-//#region Decks
-
 export type DeckPredicate = (deck: DeckIDDataTuple) => boolean;
 
 export interface DeckIDDataTuple {
@@ -156,8 +146,6 @@ export class DeckEditor {
 	}
 };
 
-//#endregion
-
 /** Use with {@link DataStore.registerOnChangedCallback} */
 export type DataChanged = (data: DataStoreRoot) => void;
 
@@ -166,7 +154,6 @@ export class DataStore {
 	public static readonly DEFAULT_DATA: DataStoreRoot = {
 		decks: {},
 		active: {},
-		archived: {},
 		removed: {}
 	};
 
@@ -639,6 +626,9 @@ export class DataStore {
 
 		for (const [noteID, removedData] of Object.entries(this.data.removed)) {
 
+			if (!removedData.cs) // Object.entries will throw
+				continue;
+
 			if (noteFilter && noteFilter(noteID, removedData) === false)
 				continue;
 
@@ -689,6 +679,9 @@ export class DataStore {
 	 * @param statisticsFactory
 	 */
 	public syncData(latestIDs: FullID[], inNoteID: NoteID, statisticsFactory: () => StatisticsData) {
+
+		Env.log.d(`DataStore:syncData:\n\tinNoteID: ${inNoteID},\n\tlatestIDs: ${latestIDs.map(id => `${id.cardSide}@${id.cardID}`)}`);
+		Env.dev(() => latestIDs.forEach(id => Env.assert(id.hasNoteID(inNoteID), `Expected all IDs to belong to ${inNoteID}: ${id}`)));
 
 		// Latest data
 		const latestSet = new Set(latestIDs.filter(id => id.isFrontSide).map(id => {
@@ -751,6 +744,8 @@ export class DataStore {
 			}
 		}
 
+		Env.log.d(`\taddedIDs: ${addedIDs}, removedIDs: ${removedIDs}, modifiedIDs: ${modifiedIDs}`);
+
 		return { addedIDs, removedIDs, modifiedIDs };
 	}
 
@@ -759,6 +754,7 @@ export class DataStore {
 	//#region Persisting data
 
 	public async save() {
+		Env.log.d(`DataStore:save: dirty: ${this._isDataDirty}`);
 		if (this._isDataDirty) {
 			const purgeRemovedBeforeDate = new Date((new Date()).getTime() - (this.purgeThreshold * 1000));
 			this.deleteRemovedCards(purgeRemovedBeforeDate);
@@ -774,19 +770,53 @@ export class DataStore {
 	private _isDataDirty = false;
 
 	/**
-	* @param changedData
-	* @param action Called if {@link changedData} is not equal to the current in-memory representation. Call `commit` to confirm changes.
-	*/
-	public onDataChangedExternally(changedData: DataStoreRoot, action: (currentData: DataStoreRoot, commit: () => void) => void) {
-		const currentData = this.data; // Save reference
-		if (!deepEqual(changedData, currentData)) {
-			action(currentData, () => {
-				this.data = changedData;
+		* Checks whether {@link changedData} differs from the current in-memory data, in which case the {@link changed} callback is called.
+		*
+		* It is the callers reponsibility to decide whether the current in-memory data should be overwritten with the {@link changedData}
+		* by calling the `commit` function passed with the {@link changed} parameter.
+		*
+		* @param changedData
+		* @param changed Called if {@link changedData} is not equal to the current in-memory data. Call `commit` to overwrite the current data with {@link changedData}.
+		* @param unchanged Called if {@link changedData} is equal  to the current in-memory data.
+		*
+		* @returns `true` if the {@link changed} callback was invoked.
+		*/
+	public onDataChangedExternally(changedData: DataStoreRoot, changed: (info: DataChangedInfo, commit: () => void) => void, unchanged?: () => void) {
+		const currentData = this.data;
+		let isNotEqual = false;
+
+		const info: DataChangedInfo = {
+			currentData: currentData,
+			changedData: changedData,
+			collectionsChanged: !deepEqual(changedData.decks, currentData.decks),
+			activeChanged: !deepEqual(changedData.active, currentData.active),
+			removedChanged: !deepEqual(changedData.removed, currentData.removed),
+		};
+
+		Env.log.d("DataStore:onDataChangedExternally: ", info);
+
+		if (info.collectionsChanged || info.activeChanged || info.removedChanged) {
+			isNotEqual = true;
+			changed(info, () => {
+				this.data = info.changedData;
+				this.setDataDirty();
 				this.triggerDataChanged();
 			});
 		}
+		else {
+			Env.dev(() => {
+				Env.assert(strictDeepEqual(changedData.decks, currentData.decks), "`collections` are not strictly equal");
+				Env.assert(strictDeepEqual(changedData.active, currentData.active), "`active` are not strictly equal");
+				Env.assert(strictDeepEqual(changedData.removed, currentData.removed), "`removed` are not strictly equal");
+			});
+
+			unchanged?.();
+		}
+
+		return isNotEqual;
 	}
 
+	/** Get notified when the in-memory data changed. */
 	public registerOnChangedCallback(evt: DataChanged) {
 		if (!this.registeredChangedCallbacks.includes(evt))
 			this.registeredChangedCallbacks.push(evt);
@@ -855,6 +885,15 @@ export class DataStore {
 
 	//#endregion
 }
+
+/** See {@link DataStore.onDataChangedExternally} */
+export type DataChangedInfo = {
+	currentData: DataStoreRoot;
+	changedData: DataStoreRoot;
+	collectionsChanged: boolean;
+	activeChanged: boolean;
+	removedChanged: boolean;
+};
 
 class StatisticsHelper {
 

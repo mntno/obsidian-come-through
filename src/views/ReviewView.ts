@@ -341,6 +341,7 @@ export class ReviewView extends BaseView<ReviewViewState> {
 		} else {
 			this.viewAssistant.createPara({ text: `Unexpected error` });
 		}
+		Env.error(error);
 	}
 
 	private async rate(id: FullID, grade: Grade) {

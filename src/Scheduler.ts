@@ -1,28 +1,51 @@
-import { FullID } from 'FullID';
 import { CardIDDataTuple, DataStore, StatisticsData } from 'DataStore';
-import { createEmptyCard, fsrs, generatorParameters, Rating, FSRS, Card, State, Grade, TypeConvert, default_request_retention, default_maximum_interval, default_enable_fuzz, default_enable_short_term, default_learning_steps, default_relearning_steps } from 'ts-fsrs';
+import { Env } from 'env';
+import { FullID } from 'FullID';
+import { Card, createEmptyCard, default_enable_fuzz, default_enable_short_term, default_learning_steps, default_maximum_interval, default_relearning_steps, default_request_retention, fsrs, FSRS, generatorParameters, Grade, Rating, State, TypeConvert } from 'ts-fsrs';
+import { isString, toIsoStringOrNull } from 'TypeAssistant';
 
 type DataItem = {
   id: FullID;
   card: Card;
 }
 
+export type FsrsSchedulerConfig = {
+	enableFuzz: boolean;
+}
+
 export class Scheduler {
 
+	private static readonly DEFAULT_CONFIG: FsrsSchedulerConfig = {
+		enableFuzz: default_enable_fuzz,
+	};
+
+	private readonly data: DataStore;
   private fsrs: FSRS;
 
-  public constructor(private readonly data: DataStore) {
+  public constructor(data: DataStore, config: FsrsSchedulerConfig = Scheduler.DEFAULT_CONFIG) {
+		this.data = data;
+		this.configure(config);
+  }
 
-    const params = generatorParameters({
-      request_retention: default_request_retention,
-      enable_fuzz: default_enable_fuzz,
-      enable_short_term: default_enable_short_term,
-      maximum_interval: default_maximum_interval,
-      learning_steps: default_learning_steps,
-      relearning_steps: default_relearning_steps,
-      // w: default_w,
-    });
-    this.fsrs = fsrs(params);
+  private static createFsrs(config: FsrsSchedulerConfig) {
+		Env.assert(config);
+		config = config ?? Scheduler.DEFAULT_CONFIG;
+
+	  const params = generatorParameters({
+	    request_retention: default_request_retention,
+	    enable_fuzz: config.enableFuzz,
+	    enable_short_term: default_enable_short_term,
+	    maximum_interval: default_maximum_interval,
+	    learning_steps: default_learning_steps,
+	    relearning_steps: default_relearning_steps,
+	    // w: default_w,
+	  });
+
+	  return fsrs(params);
+  }
+
+  public configure(config: FsrsSchedulerConfig) {
+  	this.fsrs = Scheduler.createFsrs(config);
   }
 
   public createItem() {
@@ -274,16 +297,17 @@ export class Scheduler {
   private static asCard(s: StatisticsData): Card {
     return {
       due: TypeConvert.time(s.due),
-      stability: s.s ?? 0,
-      difficulty: s.d ?? 0,
+      stability: s.s,
+      difficulty: s.d,
       // TODO: Delete in ts-fsrs 6. Value not used.
       elapsed_days: 0,
-      scheduled_days: s.sd ?? 0,
-      learning_steps: s.ls ?? 0,
-      reps: s.r ?? 0,
-      lapses: s.l ?? 0,
+      scheduled_days: s.sd,
+      learning_steps: s.ls,
+      reps: s.r,
+      lapses: s.l,
       state: s.st as State,
-      last_review: s.lr ? TypeConvert.time(s.lr) : undefined,
+      // Check if is `string` rather than if `null`: Type changed from `string | undefined` to `string | null` in 0.5.1, so there may still be `undefined` values around. `TypeConvert.time` only supports `Date`, `string`, `number`: else throws.
+      last_review: isString(s.lr) ? TypeConvert.time(s.lr) : undefined,
     };
   }
 
@@ -297,7 +321,7 @@ export class Scheduler {
       r: card.reps,
       l: card.lapses,
       st: card.state,
-      lr: card.last_review?.toISOString(),
+      lr: toIsoStringOrNull(card.last_review),
     } satisfies StatisticsData;
   }
 
@@ -315,6 +339,6 @@ export class Scheduler {
     s.r = card.reps;
     s.l = card.lapses;
     s.st = card.state;
-    s.lr = card.last_review?.toISOString();
+    s.lr = toIsoStringOrNull(card.last_review);
   }
 }

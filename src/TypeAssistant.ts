@@ -1,8 +1,6 @@
 import { CardDeclarable, CardDeclarationAssistant } from "declarations/CardDeclaration";
 import { DeckableFullID, FullID, NoteID } from "FullID";
 import { TFile } from "obsidian";
-import { ContentProcessorConfig } from "renderings/content/ContentRendererProcessor";
-import { PluginSettings } from "Settings";
 
 export function asNoteID(value: TFile | string): NoteID {
 	if (value instanceof TFile)
@@ -56,4 +54,17 @@ export function parseStrictFloat(value: unknown): number | null {
 	}
 
 	return num;
+}
+
+/**
+ * Values set to `undefined` are invalid JSON.
+ * If optional dates are stored in JSON files, use this method to make sure any unset properties are serialized and deserialized.
+ *
+ * - This is particularly important when diffing two files.
+ *
+ * @param date The date to convert.
+ * @returns The ISO 8601 string representation of the date, or `null` if the date is `undefined`.
+ */
+export function toIsoStringOrNull(date: Date | undefined) {
+	return date !== undefined ? date.toISOString() : null
 }

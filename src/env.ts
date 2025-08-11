@@ -14,6 +14,7 @@ const devLogger = isDev ? console : noopLogger;
 
 export const Env = {
 	isDev: !isProduction,
+	dev: isProduction ? () => { } : (action: () => void) => action(),
 
 	/** Always logs */
 	error: console.error,

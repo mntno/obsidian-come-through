@@ -1,17 +1,17 @@
 import { DataStore, StatisticsData } from "DataStore";
 import { CardDeclarable, CardDeclarationAssistant } from "declarations/CardDeclaration";
 import { DeclarationInfo, DeclarationParser, PostParseInfo } from "declarations/DeclarationParser";
+import { Env } from "env";
 import { FullID, NoteID } from "FullID";
 import { App, CachedMetadata, Editor, FileManager, TAbstractFile, TFile } from "obsidian";
 import { asNoteID, isString } from "TypeAssistant";
-
 
 export class SyncManager {
 
 	public readonly app: App;
 	private readonly dataStore: DataStore;
 	private readonly statisticsFactory: () => StatisticsData;
-	private isDisabled = false;
+	private isSuspended = false;
 
 	public constructor(dataStore: DataStore, app: App, statisticsFactory: () => StatisticsData) {
 		this.dataStore = dataStore;
@@ -19,16 +19,33 @@ export class SyncManager {
 		this.statisticsFactory = statisticsFactory;
 	}
 
-	public setDisabled() {
-		this.isDisabled = true;
+	public suspend() {
+		this.isSuspended = true;
 	}
 
-	public setEnabled() {
-		this.isDisabled = false;
+	public resume() {
+		this.isSuspended = false;
+	}
+
+	/** Ensures that {@link resume} is called after {@link action} has exited. */
+	public whileSuspended(action: () => void) {
+		Env.log.d("SyncManager:whileSuspended: suspending");
+		try {
+			this.suspend();
+			action();
+		}
+		catch (error) {
+			Env.error(error);
+		}
+		finally {
+			Env.log.d("SyncManager:whileSuspended: resuming");
+			this.resume();
+		}
 	}
 
 	public async open(file: TFile | null) {
-		if (this.isDisabled)
+		Env.log.d(`SyncManager:open isSuspended: ${this.isSuspended}`);
+		if (this.isSuspended)
 			return;
 
 		if (file) {
@@ -38,7 +55,8 @@ export class SyncManager {
 	}
 
 	public async changed(file: TFile, data: string, cache: CachedMetadata) {
-		if (this.isDisabled)
+		Env.log.d(`SyncManager:changed isSuspended: ${this.isSuspended}`);
+		if (this.isSuspended)
 			return;
 
 		const ids = await SyncManager.processFileChanged(file, data, cache, this.app);
@@ -46,7 +64,8 @@ export class SyncManager {
 	}
 
 	public async delete(file: TAbstractFile) {
-		if (this.isDisabled)
+		Env.log.d(`SyncManager:delete isSuspended: ${this.isSuspended}`);
+		if (this.isSuspended)
 			return;
 
 		if (file instanceof TFile && this.dataStore.removeNote(asNoteID(file.path)))
@@ -54,7 +73,8 @@ export class SyncManager {
 	}
 
 	public async rename(file: TAbstractFile, oldPath: string) {
-		if (this.isDisabled)
+		Env.log.d(`SyncManager:rename isSuspended: ${this.isSuspended}`);
+		if (this.isSuspended)
 			return;
 
 		if (file instanceof TFile && this.dataStore.changeNoteID(asNoteID(oldPath), asNoteID(file), false))
@@ -255,7 +275,10 @@ export class SyncManager {
 	}
 
 	private async syncIDs(ids: FullID[], file: TFile) {
-		if (this.isDisabled)
+		Env.log.d(`SyncManager:syncIDs isSuspended: ${this.isSuspended}, num IDs: ${ids.length}`);
+		if (this.isSuspended)
+			return;
+		if (ids.length == 0)
 			return;
 
 		try {
