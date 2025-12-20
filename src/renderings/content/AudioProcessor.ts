@@ -1,6 +1,6 @@
 import { Env } from "env";
 import { Component } from "obsidian";
-import { HtmlAttribute } from "renderings/dom-constants";
+import { HtmlAttribute } from "utils/dom/constants";
 import { parseStrictFloat } from "TypeAssistant";
 import { ContentRendererPostProcessor, ContentRendererProcessor, PostProcessorParameter } from "./ContentRendererProcessor";
 
@@ -201,24 +201,25 @@ export class AudioProcessor extends ContentRendererProcessor implements ContentR
 	}
 
 	/**
-	 * Converts a time string in HH:MM:SS.mmm format to seconds.
-	 * @param timeString The time string (e.g., "00:01:30", or "00:01:30.432").
-	 * @returns The time in seconds.
-	 */
+		* Converts a time string in HH:MM:SS.mmm format to seconds.
+		* @param timeString The time string (e.g., "00:01:30", or "00:01:30.432").
+		* @returns The time in seconds.
+		*/
 	private static timeToSeconds(timeString: string): number {
 		let totalSeconds = 0;
 		let milliseconds = 0;
 
 		// First, check for and extract milliseconds if present
-		const msParts = timeString.split('.');
+		const msParts = timeString.split(".");
 		if (msParts.length > 1) {
-			timeString = msParts[0]; // The part before milliseconds
+			timeString = msParts[0] ?? ""; // The part before milliseconds
 			// Convert milliseconds string to number, handle cases like ".4" or ".40"
-			milliseconds = Number(`0.${msParts[1]}`) || 0;
+			const msPartValue = msParts[1];
+			milliseconds = msPartValue !== undefined ? Number(`0.${msPartValue}`) : 0;
 		}
 
 		// Split the remaining time string by ':'
-		const parts = timeString.split(':').map(Number);
+		const parts = timeString.split(":").map(Number);
 
 		// Parse parts from right to left (most common for time formats like HH:MM:SS, MM:SS)
 		// index 0: seconds (if only 1 part) or hours (if 3 parts)
@@ -229,20 +230,25 @@ export class AudioProcessor extends ContentRendererProcessor implements ContentR
 		// "01:20" means 1 minute 20 seconds.
 		// "01:02:20" means 1 hour 2 minutes 20 seconds.
 
-		if (parts.length === 3) {
+		const firstPart = parts[0];
+		const secondPart = parts[1];
+		const thirdPart = parts[2];
+
+		if (firstPart !== undefined && secondPart !== undefined && thirdPart !== undefined) {
 			// HH:MM:SS
-			totalSeconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
-		} else if (parts.length === 2) {
+			totalSeconds = firstPart * 3600 + secondPart * 60 + thirdPart;
+		} else if (firstPart !== undefined && secondPart !== undefined) {
 			// MM:SS
-			totalSeconds = parts[0] * 60 + parts[1];
-		} else if (parts.length === 1) {
+			totalSeconds = firstPart * 60 + secondPart;
+		} else if (firstPart !== undefined) {
 			// SS (single number implies seconds for media fragments)
-			totalSeconds = parts[0];
+			totalSeconds = firstPart;
 		}
 		// Add the fractional seconds from milliseconds
 		totalSeconds += milliseconds;
 
-		Env.log.proc(`\ttimeToSeconds:\n\t\tinput: "${timeString}${msParts.length > 1 ? `.${msParts[1]}` : ''}", output ${totalSeconds}`);
+		const originalMsPart = msParts[1] ?? "";
+		Env.log.proc(`\ttimeToSeconds:\n\t\tinput: "${timeString}${originalMsPart ? `.${originalMsPart}` : ""}", output ${totalSeconds}`);
 
 		return totalSeconds;
 	}

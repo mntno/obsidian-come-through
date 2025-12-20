@@ -1,19 +1,23 @@
-import { DataStore, DataStoreRoot } from "DataStore";
+import { OpenView, OpenViewCommand } from "commands/openView";
+import { ReviewViewCommand } from "commands/reviewView";
+import { DataStore, DataStoreRoot } from "data/DataStore";
+import { SyncManager } from "data/SyncManager";
+import { UniqueID } from "data/UniqueID";
 import { DeclarationManager } from "declarations/DeclarationManager";
 import { DeclarationParser } from "declarations/DeclarationParser";
 import { Env } from "env";
 import t from "Localization";
 import { ConfirmationModal } from "modals/ConfirmationModal";
-import { SelectDeckModal } from "modals/SelectDeckModal";
-import { Editor, Keymap, MarkdownPostProcessorContext, MarkdownView, PaneType, Plugin, TFile } from "obsidian";
-import { FsrsSchedulerConfig, Scheduler } from "Scheduler";
-import { PluginSettings, SettingsChangedInfo, SettingsManager, SettingTab } from "Settings";
-import { SyncManager } from "SyncManager";
-import { PLUGIN_ICON, UIAssistant } from "UIAssistant";
-import { UniqueID } from "UniqueID";
+import { Editor, Keymap, MarkdownPostProcessorContext, MarkdownView, Plugin, TFile } from "obsidian";
+import { Scheduler } from "scheduling/Scheduler";
+import { FsrsSchedulerConfig } from "scheduling/types";
+import { PluginSettings, SettingsChangedInfo, SettingsManager } from "Settings";
+import { Icon } from "ui/constants";
+import { SettingTab } from "ui/SettingTab";
+import { UIAssistant } from "ui/UIAssistant";
 import { DecksView } from "views/DecksView";
 import { DefinedContentView } from "views/DefinedContentView";
-import { ReviewView } from "views/ReviewView";
+import { ReviewView } from "views/review/ReviewView";
 
 interface PluginData {
 	settings: PluginSettings;
@@ -53,8 +57,8 @@ export default class ComeThroughPlugin extends Plugin {
 		this.ui = new UIAssistant(this.settingsManager);
 
 		this.addSettingTab(new SettingTab(this, this.settingsManager));
-		this.addRibbonIcon(PLUGIN_ICON, this.ui.contextulize("Review"), (evt: MouseEvent) => {
-			this.openReviewView(Keymap.isModEvent(evt));
+		this.addRibbonIcon(Icon.PLUGIN, this.ui.contextulize("Review"), (evt: MouseEvent) => {
+			OpenView.review(this.app, this.dataStore, Keymap.isModEvent(evt));
 		});
 
 		this.app.workspace.onLayoutReady(() => this.registerEvents());
@@ -64,12 +68,6 @@ export default class ComeThroughPlugin extends Plugin {
 				if (!this.settingsManager.settings.hideDeclarationInReadingView || UIAssistant.isInInLivePreview(this.app))
 					DeclarationManager.processCodeBlock(this.app, source, el, ctx, this.dataStore);
 			}, -100); // Process this code block last, allowing other plugins to alter user input first.
-
-			// Register yaml highlighting. Seen while editing (comments, explicit strings, ...). TODO: This is CodeMirror 5 API.
-			window.CodeMirror.defineMode(language, (config) => window.CodeMirror.getMode(config, "text/x-yaml"));
-			this.register(() => {
-				window.CodeMirror.defineMode(language, (config) => window.CodeMirror.getMode(config, "null"));
-			});
 		}
 
 		// Views
@@ -91,31 +89,17 @@ export default class ComeThroughPlugin extends Plugin {
 
 		// Commands
 
-		this.addCommand({
-			id: 'open-review',
-			name: t.commands.openReview.name,
-			callback: () => this.openReviewView(true)
-		});
+		this.addCommand(OpenViewCommand.review(this.app, this.dataStore));
+		this.addCommand(OpenViewCommand.collections(this.app));
+		this.addCommand(OpenViewCommand.definedContent(this.app));
 
-		this.addCommand({
-			id: 'open-decks',
-			name: t.commands.openDecks.name,
-			callback: () => this.openDecksView(true)
-		});
-
-		this.addCommand({
-			id: 'view-defined-content-in-current-note',
-			name: t.commands.openDeclarations.name,
-			checkCallback: (checking: boolean) => {
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView && markdownView.file && DeclarationParser.containsDeclarations(markdownView.file, this.app)) {
-					if (!checking)
-						this.viewDefinedContent(markdownView.file, false);
-					return true;
-				}
-				return false;
-			}
-		});
+		for (const command of ReviewViewCommand.setSortOrder(this.app))
+			this.addCommand(command);
+		for (const command of ReviewViewCommand.rate(this.app))
+			this.addCommand(command);
+		this.addCommand(ReviewViewCommand.showInfoModal(this.app));
+		this.addCommand(ReviewViewCommand.toggleInlineInfo(this.app));
+		this.addCommand(ReviewViewCommand.navigateToSourceFile(this.app));
 
 		this.addCommand({
 			id: 'generate-id-cursor',
@@ -211,61 +195,11 @@ export default class ComeThroughPlugin extends Plugin {
 
 			if (isFileIncluded && (/*source === "file-explorer-context-menu" ||*/ source === "more-options" || source === "tab-header")) {
 				this.ui.addMenuItem(menu, t.actions.viewDeclarationsInFile, {
-					onClick: async (evt) => this.viewDefinedContent(file, Keymap.isModEvent(evt)),
+					onClick: async (evt) => OpenView.definedContent(this.app, file, Keymap.isModEvent(evt)),
 					section: "open",
 				});
 			}
 		}));
-	}
-
-	private async openDecksView(paneType: PaneType | boolean) {
-		const leaf = this.app.workspace.getLeaf(paneType);
-		await leaf.setViewState({
-			type: DecksView.TYPE,
-			active: true,
-		});
-	}
-
-	private async openReviewView(paneType: PaneType | boolean) {
-
-		const openView = async (paneType: PaneType | boolean, state: Record<string, unknown> | undefined) => {
-
-			const leaf = this.app.workspace.getLeaf(paneType);
-
-			await leaf.setViewState({
-				type: ReviewView.TYPE,
-				state: state,
-				active: true,
-				pinned: undefined,
-				group: undefined,
-			});
-		};
-
-		const allDecks = this.dataStore.getAllDecks();
-		if (allDecks.length) {
-			const modal = new SelectDeckModal(
-				this.app,
-				this.dataStore,
-				[...[UIAssistant.allDecksOptionItem()], ...allDecks],
-				async (deck, evt) => {
-					await openView(Keymap.isModEvent(evt), ReviewView.createViewState(deck.id));
-				});
-			modal.setPlaceholder(t.modals.selectDeck.placeholder);
-			modal.open();
-		}
-		else {
-			await openView(paneType, undefined);
-		}
-	}
-
-	private async viewDefinedContent(file: TFile, paneType: PaneType | boolean) {
-		await this.app.workspace.getLeaf(paneType).setViewState({
-			type: DefinedContentView.TYPE,
-			state: DefinedContentView.createViewState(file),
-			active: true,
-			pinned: undefined,
-			group: undefined,
-		});
 	}
 
 	private static async loadPluginData(plugin: Plugin): Promise<PluginData> {
@@ -305,7 +239,7 @@ export default class ComeThroughPlugin extends Plugin {
 	private onSettingsSaved(changedInfo?: SettingsChangedInfo) {
 		switch (changedInfo) {
 			case "schedulerConfig":
-				this.scheduler.configure(this.createSchedulerConfig());
+				this.scheduler.reconfigure(this.createSchedulerConfig());
 				break;
 		}
 	}

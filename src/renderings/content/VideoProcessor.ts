@@ -1,4 +1,4 @@
-import { HtmlAttribute } from "renderings/dom-constants";
+import { HtmlAttribute } from "utils/dom/constants";
 import { ContentRendererPostProcessor, ContentRendererProcessor, PostProcessorParameter } from "./ContentRendererProcessor";
 
 export class VideoProcessor extends ContentRendererProcessor implements ContentRendererPostProcessor {

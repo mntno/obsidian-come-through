@@ -1,0 +1,66 @@
+import { Env } from "env";
+import { App, Modal, Setting } from "obsidian";
+import { CssClass } from "utils/obs/constants";
+
+/**
+ * - Adds a plugin specific class to all modals for styling purposes.
+ * - Adds mobile hacks.
+ */
+export class BaseModal extends Modal {
+	constructor(app: App, options?: {
+		fullscreenOnLimitedScreenSpace: boolean,
+	}) {
+		super(app);
+
+		// DOM when opening the "Show debug info" modal:
+		//
+		// <div class="modal-container mod-dim">  			<-- this.containerEl
+		// 	<div class="modal-bg" style="opacity: 0.85;"></div>
+		// 	<div class="modal mod-lg" style="">					<-- this.modalEl
+		// 		<div class="modal-close-button"></div>
+		// 		<div class="modal-header">
+		// 			<div class="modal-title"></div>
+		// 		</div>
+		// 		<div class="modal-content"></div>					<--- this.contentEl
+		// 		<div class="modal-button-container"></div>
+		// 	</div>
+		// </div>
+
+		// "Show debug info" modal has this class which makes the height 100% on mobile, i.e. fullscreen.
+		// If modal contains a lot of content and therefore expands in height, it will never fill the entire screen. So in those cases, it's better to force fullscreen.
+		if (options?.fullscreenOnLimitedScreenSpace && Env.isPhone)
+			this.modalEl.addClass(CssClass.Modal.LG);
+
+		this.contentEl.addClass("come-through-modal-content");
+	}
+
+	protected createSetting(name: string, o?: { styleControlElAsDesc?: boolean, isHeading?: boolean }) {
+		const s = new Setting(this.contentEl).setName(name)
+		if (o?.styleControlElAsDesc)
+			s.controlEl.addClass(CssClass.Setting.Item.DESC);
+		if (o?.isHeading)
+			s.setHeading();
+		return s;
+	}
+
+	/** Using this you get better bottom margins on mobile than adding buttons on a `Setting`. */
+	protected getButtonContainer() {
+		// Try to find existing button container, or create one if it doesn't exist
+		let buttonContainer = this.modalEl.querySelector<HTMLElement>("." + CssClass.Modal.BUTTON_CONTAINER);
+		if (buttonContainer === null)
+			buttonContainer = this.contentEl.createDiv(CssClass.Modal.BUTTON_CONTAINER);
+		return buttonContainer;
+	}
+
+	protected addDoneButton(onMobileOnly: boolean) {
+		if (onMobileOnly && !Env.isMobile)
+			return;
+
+		this.getButtonContainer().createEl("button", {
+			text: "Done",
+			cls: CssClass.Modal.CANCEL,
+		}, (button => {
+			button.addEventListener("click", () => this.close());
+		}))
+	}
+}

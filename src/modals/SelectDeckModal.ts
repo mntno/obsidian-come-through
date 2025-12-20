@@ -1,5 +1,6 @@
-import { SuggestModal, App } from "obsidian";
-import { DeckIDDataTuple, DataStore } from "DataStore";
+import { DataStore, DeckIDDataTuple } from "data/DataStore";
+import { App, SuggestModal } from "obsidian";
+import { UIAssistant } from "ui/UIAssistant";
 
 
 export class SelectDeckModal extends SuggestModal<DeckIDDataTuple> {
@@ -22,7 +23,7 @@ export class SelectDeckModal extends SuggestModal<DeckIDDataTuple> {
   }
 
   renderSuggestion(value: DeckIDDataTuple, el: HTMLElement): void {
-    const numberOfCards = this.data.getAllCardsForDeck(value.id).length;
+    const numberOfCards = this.data.getAllCardsForDeck(value.id === UIAssistant.DECK_ID_NONE ? undefined : value.id).length;
     el.createEl('div', { text: `${value.data.n}` }).createEl('small', { text: ` (${numberOfCards})` });
     el.createEl('small', { text: value.data.p.length > 0 ? this.descendants(value) : "" });
   }

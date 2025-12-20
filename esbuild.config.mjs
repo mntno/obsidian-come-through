@@ -1,6 +1,7 @@
-import esbuild from "esbuild";
-import process from "process";
 import builtins from "builtin-modules";
+import esbuild from "esbuild";
+import fs from "fs";
+import process from "process";
 
 const banner =
 `/*
@@ -10,12 +11,17 @@ if you want to view the source, please visit the github repository of this plugi
 `;
 
 const prod = (process.argv[2] === "production");
+const outdir = prod ? "dist" : ".";
 
 const context = await esbuild.context({
 	banner: {
 		js: banner,
 	},
-	entryPoints: ["src/main.ts"],
+	// When you use an object for entryPoints, the keys become the output filenames and the values are the input file paths.
+	entryPoints: {
+		main: "src/main.ts",
+		styles: "styles/main.css"
+	},
 	bundle: true,
 	external: [
 		"obsidian",
@@ -37,15 +43,16 @@ const context = await esbuild.context({
 	logLevel: "info",
 	sourcemap: prod ? false : "inline",
 	treeShaking: true,
-	outfile: "main.js",
+	outdir: outdir,
 	minify: prod,
 	define: {
-    "process.env.NODE_ENV": prod ? '"production"' : '"development"',
-  },
+		"process.env.NODE_ENV": prod ? '"production"' : '"development"',
+	},
 });
 
 if (prod) {
 	await context.rebuild();
+	fs.copyFileSync("manifest.json", "dist/manifest.json");
 	process.exit(0);
 } else {
 	await context.watch();

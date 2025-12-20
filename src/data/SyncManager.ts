@@ -1,11 +1,12 @@
-import { DataStore, StatisticsData } from "DataStore";
+import { DataStore, StatisticsData } from "data/DataStore";
+import { FullID, NoteID } from "data/FullID";
 import { CardDeclarable, CardDeclarationAssistant } from "declarations/CardDeclaration";
 import { DeclarationInfo, DeclarationParser, PostParseInfo } from "declarations/DeclarationParser";
 import { Env } from "env";
-import { FullID, NoteID } from "FullID";
 import { App, CachedMetadata, Editor, FileManager, TAbstractFile, TFile } from "obsidian";
 import { asNoteID, isString } from "TypeAssistant";
 
+/** Keeps the plugin's internal data synchronized with card declarations in the vault by listening for and processing file system events. */
 export class SyncManager {
 
 	public readonly app: App;

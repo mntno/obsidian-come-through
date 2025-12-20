@@ -1,6 +1,7 @@
+import { DeckableFullID, FullID, NoteID } from "data/FullID";
 import { CardDeclarable, CardDeclarationAssistant } from "declarations/CardDeclaration";
-import { DeckableFullID, FullID, NoteID } from "FullID";
 import { TFile } from "obsidian";
+import { Num, Obj, Str } from "utils/ts";
 
 export function asNoteID(value: TFile | string): NoteID {
 	if (value instanceof TFile)
@@ -23,15 +24,15 @@ export function fullIDFromDeclaration(declaration: CardDeclarable, noteID: NoteI
  * @returns `true` if `typeof` for {@link value} returns `"object"` and {@link value} is not `null`.
  */
 export function isObject(value: unknown): value is object {
-	return typeof value === "object" && value !== null; // `null` is an object
+	return Obj.is(value);
 }
 
 export function isString(value: unknown): value is string {
-	return typeof value === "string";
+	return Str.is(value);
 }
 
 export function isNumber(value: unknown): value is number {
-	return typeof value === "number";
+	return Num.is(value);
 }
 
 export function isDate(value: unknown): value is Date {
@@ -54,17 +55,4 @@ export function parseStrictFloat(value: unknown): number | null {
 	}
 
 	return num;
-}
-
-/**
- * Values set to `undefined` are invalid JSON.
- * If optional dates are stored in JSON files, use this method to make sure any unset properties are serialized and deserialized.
- *
- * - This is particularly important when diffing two files.
- *
- * @param date The date to convert.
- * @returns The ISO 8601 string representation of the date, or `null` if the date is `undefined`.
- */
-export function toIsoStringOrNull(date: Date | undefined) {
-	return date !== undefined ? date.toISOString() : null
 }

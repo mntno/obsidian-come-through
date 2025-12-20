@@ -1,19 +1,31 @@
 {
-  "compilerOptions": {
-    "baseUrl": "src",
-    "inlineSourceMap": true,
-    "inlineSources": true,
-    "module": "ESNext",
-    "target": "ES2022",
-    "allowJs": true,
-    "noImplicitAny": true,
-    "moduleResolution": "node",
-    "importHelpers": true,
-    "isolatedModules": true,
-    "strictNullChecks": true,
-    "lib": ["DOM", "ES2022"]
-  },
-  "include": [
-    "**/*.ts"
-  ]
+	"compilerOptions": {
+		"baseUrl": "./src",
+		"inlineSourceMap": true,
+		"inlineSources": true,
+		"module": "ESNext",
+		"target": "ES2022",
+		"allowJs": true,
+		"noImplicitAny": true,
+		"moduleResolution": "node",
+		"importHelpers": true,
+		"isolatedModules": true,
+		//"strict": true,
+		"strictNullChecks": true,
+		"noUncheckedIndexedAccess": true,
+		"lib": [
+			"DOM",
+			"ES2022"
+		]
+	},
+	"include": [
+		"./src/**/*.ts"
+	],
+	"exclude": [
+		"./node_modules",
+		"./dist",
+		"./build",
+		"./main.js",
+		"./eslint.config.js"
+	]
 }

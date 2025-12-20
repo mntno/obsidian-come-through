@@ -11,7 +11,7 @@ export class FullID implements FullID {
     if (cardSide) {
       if (!FullID.isSideValid(cardSide))
         throw new Error(`Invalid value for "side": ${cardSide}. Expected: ${FullID.sideValues.join(", ")}.`);
-      this._cardSide = cardSide?.trim().toLowerCase();
+      this._cardSide = cardSide.trim().toLowerCase();
     }
   }
 
@@ -202,10 +202,12 @@ export class DeckableFullID extends FullID {
 		this.deckIDs = deckIDs;
 	}
 
+	/** Determines if the provided deck IDs are equivalent to this card's decks, ignoring order. */
 	public isDecksEqual(deckIDs: DeckID[]) {
-		return (
-			this.deckIDs.length === deckIDs.length &&
-			this.deckIDs.every((deck, index) => deck === deckIDs[index])
-		);
+		if (this.deckIDs.length !== deckIDs.length)
+			return false;
+
+		const otherDecks = new Set(deckIDs);
+		return this.deckIDs.every(deckID => otherDecks.has(deckID));
 	}
 }

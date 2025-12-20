@@ -1,15 +1,15 @@
 import { CardDeclarationAssistant } from "declarations/CardDeclaration";
 import { CommandDeclarationAssistant } from "declarations/CommandDeclaration";
 import { Declaration } from "declarations/Declaration";
-import { MarkdownRenderChild, setIcon } from "obsidian";
-import { AlternateHeadingsRenderer } from "./AlternateHeadingsRenderer";
-import { CardDeclarationRenderer } from "./CardDeclarationRenderer";
-import { DeclarationErrorRenderer } from "./DeclarationErrorRenderer";
-import { DataProvider, DeclarationChangedEvent, DeclarationRenderable, DeclarationRenderAssistant } from "./DeclarationRenderable";
-import { HeadingAndDelimiterRenderer } from "./HeadingAndDelimiterRenderer";
-import { HeadingIsFrontRenderer } from "./HeadingIsFrontRenderer";
-import { PLUGIN_ICON } from "UIAssistant";
 import { Env } from "env";
+import { MarkdownRenderChild, setIcon } from "obsidian";
+import { AlternateHeadingsRenderer } from "renderings/declarations/AlternateHeadingsRenderer";
+import { CardDeclarationRenderer } from "renderings/declarations/CardDeclarationRenderer";
+import { DeclarationErrorRenderer } from "renderings/declarations/DeclarationErrorRenderer";
+import { DataProvider, DeclarationChangedEvent, DeclarationRenderable, DeclarationRenderAssistant } from "renderings/declarations/DeclarationRenderable";
+import { HeadingAndDelimiterRenderer } from "renderings/declarations/HeadingAndDelimiterRenderer";
+import { HeadingIsFrontRenderer } from "renderings/declarations/HeadingIsFrontRenderer";
+import { Icon } from "ui/constants";
 
 export class DeclarationRenderChild extends MarkdownRenderChild {
 
@@ -86,7 +86,7 @@ export class DeclarationRenderChild extends MarkdownRenderChild {
 		this.containerEl.addClass("callout");
 
 		this.titleContainer = this.containerEl.createDiv({ cls: "callout-title" });
-		this.titleContainer.createDiv({ cls: "callout-icon" }, (icon) => setIcon(icon, PLUGIN_ICON));
+		this.titleContainer.createDiv({ cls: "callout-icon" }, (icon) => setIcon(icon, Icon.PLUGIN));
 		this.titleEl = this.titleContainer.createDiv({ cls: "callout-title-inner" });
 
 		this.contentContainerEl = this.containerEl.createDiv({ cls: "callout-content" });

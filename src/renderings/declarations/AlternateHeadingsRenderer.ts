@@ -1,4 +1,4 @@
-import { DeclarationRenderer, DeclarationRenderable, DeclarationRenderAssistant } from "./DeclarationRenderable";
+import { DeclarationRenderer, DeclarationRenderable, DeclarationRenderAssistant } from "renderings/declarations/DeclarationRenderable";
 import { AlternateHeadingsDeclarable, AlternateHeadingsAssistant } from "declarations/commands/AlternateHeadings";
 
 export class AlternateHeadingsRenderer

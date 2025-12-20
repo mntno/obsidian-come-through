@@ -2,19 +2,27 @@ import { Platform } from "obsidian";
 
 const isProduction = process.env.NODE_ENV === "production";
 const isDev = !isProduction;
+const noop = () => {};
 
 const noopLogger = {
-	debug: () => { },
-	log: () => { },
-	info: () => { },
-	warn: () => { },
+	debug: noop,
+	log: noop,
+	info: noop,
+	warn: noop,
 };
 
 const devLogger = isDev ? console : noopLogger;
 
+const DevContext = {
+	assert: console.assert,
+	run: (action: () => void) => action(),
+} as const;
+
 export const Env = {
-	isDev: !isProduction,
-	dev: isProduction ? () => { } : (action: () => void) => action(),
+	/** Debug/Dev context */
+	dev: isDev ? DevContext : undefined,
+	isDev: isDev,
+	noop: noop,
 
 	/** Always logs */
 	error: console.error,
@@ -40,13 +48,15 @@ export const Env = {
 		i: devLogger.info,
 
 		/** To indicate a potential issue, a suboptimal practice, a deprecated feature being used, or a situation that might lead to an error later but isn't critical right now. It's a "heads up" or a "soft error." */
-		w: devLogger.warn,
+		w: console.warn,
+
+		e: console.error,
 
 		/** Debug log for content processors. See {@link ContentRendererProcessor}. */
-		proc: false ? devLogger.debug : noopLogger.debug,
+		proc: devLogger.info,  //  devLogger.info : noopLogger.debug,
 
 		/** Debug log for views. */
-		view: false ? devLogger.debug : noopLogger.debug,
+		view: devLogger.info, //  devLogger.info : noopLogger.debug,
 
 	},
 
@@ -66,4 +76,14 @@ export const Env = {
 			return true;
 		return false;
 	},
+
+	/** If running in mobile app that has very limited screen space. */
+	isPhone: Platform.isPhone,
+	/** If running in mobile app that has sufficiently large screen space. */
+	isTablet: Platform.isTablet,
+
+
+	str: {
+		EMPTY: "",
+	} as const
 } as const;

@@ -1,6 +1,6 @@
 import { DeckableDeclarable, Declarable, Declaration, DeclarationRange, YamlParseErrorCallback } from "declarations/Declaration";
 import { isString } from "TypeAssistant";
-import { UniqueID } from "UniqueID";
+import { UniqueID } from "data/UniqueID";
 
 export const enum IDScope {
 	UNIQUE,

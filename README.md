@@ -102,11 +102,11 @@ To create decks, select *Decks* in the [Command palette](https://help.obsidian.m
 
 To review the cards, click / tap on *Review* in the [ribbon](https://help.obsidian.md/ribbon) or the [Command palette](https://help.obsidian.md/plugins/command-palette).
 
-## Sync
+## Syncing
 
-There are scenarios during synching between devices which may result in your cards’ review statistics being reset. This often occurs when you make changes on two or more devices before any synchronization happens. For example, if two devices are offline and both have pending changes, a conflict might arise the next time they go online and try to sync, as the sync mechanism won't know which changes to prioritize.
+Syncing your vault across multiple devices can sometimes lead to conflicts, which may cause review statistics to be overwritten with older data. This can happen if you, e.g., rate on two or more devices while they are offline or before they have had a chance to sync. When the devices come online, the sync service may not be able to determine which version of the data is the correct one and will have to choose one version. To avoid this, the safest approach is to only make changes or rate on one device at a time.
 
-To prevent this, the safest approach is to make changes on only one device at a time. Once changes on that device are complete, ensure all devices are fully synchronized before initiating changes on a different device.
+However, as soon as changes are detected, a dialog is shown where you may accept or reject the change. Note that if you reject on one device, the next sync will cause the dialog to show on the other device(s), where you should then accept the change.
 
 ## Roadmap
 
@@ -117,6 +117,3 @@ To prevent this, the safest approach is to make changes on only one device at a 
 ## More
 
 See the [release notes](https://github.com/mntno/obsidian-come-through/releases) for more details.
-
-
-

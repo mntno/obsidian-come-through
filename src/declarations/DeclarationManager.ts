@@ -1,4 +1,4 @@
-import { DataStore } from "DataStore";
+import { DataStore } from "data/DataStore";
 import { CardDeclarationAssistant } from "declarations/CardDeclaration";
 import { DeckableDeclarable, Declaration } from "declarations/Declaration";
 import { DeclarationRenderChild } from "renderings/declarations/DeclarationRenderChild";

@@ -1,8 +1,11 @@
-import { CardID, FullID, NoteID, DeckID, DeckableFullID } from "FullID";
+import { CardID, DeckID, DeckableFullID, FullID, NoteID } from "data/FullID";
+import { UniqueID } from "data/UniqueID";
+import { Env } from "env";
 import { deepEqual, strictDeepEqual } from 'fast-equals';
 import { asNoteID, isDate, isString } from "TypeAssistant";
-import { UniqueID } from "UniqueID";
-import { Env } from "env";
+import { DateTime } from "utils/datetime";
+import { UnexpectedUndefinedError } from "utils/errors";
+import { Obj, Str } from "utils/ts";
 
 export interface DataStoreRoot {
 	decks: DecksData;
@@ -28,16 +31,20 @@ interface NoteData {
 
 type RemovedData = Record<NoteID, RemovedNoteData>;
 /** Serves as a reminder that dates are read and stored as ISO strings. */
-type DateString = string;
+type IsoDateString = string;
+/** Make sure dates are never of `undefined` type. */
+type OptionalIsoDateString = IsoDateString | null;
 
 interface RemovedCardData extends CardData {
 	/** Date marked for removal. */
-	date: DateString;
+	date: IsoDateString;
 }
 
 interface RemovedNoteData {
 	cs: Record<CardID, RemovedCardData>;
 }
+/** Shallow type validation. */
+const isRemovedNoteData = (value: unknown): value is RemovedNoteData => Obj.is(value) && "cs" in value;
 
 type LogID = string;
 type CardsData = Record<CardID, CardData>;
@@ -48,27 +55,74 @@ export interface CardData {
 	d: DeckID[];
 	/** The review log id. */
 	l: LogID[];
+	/**
+		* Created date.
+		* @since 0.6.0 Make sure to call {@link validateCardData} before use.
+		*/
+	c: OptionalIsoDateString,
 }
+/** Shallow type validation. */
+const isCardData = (value: unknown): value is CardData => Obj.is(value) && "s" in value && "d" in value;
+/** Checks for undefined values, which can happen if values weren't deserialized. */
+const validateCardData = (value: CardData) => {
+	if (!Str.is(value.c))
+		value.c = null;
+};
 
 export interface StatisticsData {
 	/** Due date. ISO 8601. */
-	due: string;
+	due: IsoDateString;
 	/** stability */
 	s: number;
 	/** difficulty */
 	d: number;
-	/** scheduled_days */
+	/**
+		* `scheduled_days`
+		*
+		* The {@link due | due date} minus {@link lr | last review date} in days.
+		*/
 	sd: number;
-	/** learning_steps */
+
+	/**
+		* `learning_steps`
+		*/
 	ls: number;
-	/** reps */
+
+	/**
+		* `reps`
+		*/
 	r: number;
-	/** lapses */
+
+	/**
+		* `lapses`
+		*
+		* Incremented by one if, and only if, rated *Again*, which tells the algorithm that the review failed, forcing the card back into the (re)learning phase.
+		*
+		* - The `lapses` counter is incremented by exactly one every time a card is rated *Again*. The only exceptions are administrative functions:
+		* 	- `rollback()` can decrease the count if an 'Again' rating is undone.
+		* 	- `forget()` can reset the count to zero.
+		*/
 	l: number;
-	/** state */
+
+	/**
+		* `state`
+		*
+		* - **New**: The card has been created but has not been studied yet.
+		* - **Learning**: The card is being learned for the first time. It will typically be shown in short intervals.
+		* - **Review**: The card has been successfully learned and is now in the long-term review cycle to maintain memory retention.
+		* - **Relearning**: The card was previously in the 'Review' state but was forgotten (rated 'Again'). It must be learned again before returning to the long-term review cycle.
+		*/
 	st: number;
-	/** last_review ISO 8601. */
-	lr: string | null;
+
+	/**
+		* `last_review`
+		*
+		* The date of the last rating, or `null` if never rated.
+		*
+		* - ISO 8601 format.
+		* - Note that if statistics is set to `forget`, state resets to New but `last_review` is not changed.
+		*/
+	lr: OptionalIsoDateString;
 }
 
 export type CardPredicate = (id: FullID, data: CardData) => boolean;
@@ -131,18 +185,17 @@ export class DeckEditor {
 		this.data.n = name;
 	}
 
-	public setParent(parentID?: DeckID) {
+	/**
+	 * @param parentID Set to `null` to remove all parents.
+	 */
+	public setParent(parentID: DeckID | null) {
 		console.assert(this.data.p.length <= 1, "Multiple deck parents not implemented.");
-		this.data.p = parentID ? [parentID] : [];
-	}
-
-	public static getParents(parentID?: DeckID) {
-		return parentID ? [parentID] : [];
+		this.data.p = parentID !== null ? [parentID] : [];
 	}
 
 	public static parent(data: DeckData) {
 		console.assert(data.p.length <= 1, "Multiple deck parents not implemented.");
-		return data.p.first();
+		return data.p.first() ?? null;
 	}
 };
 
@@ -182,7 +235,7 @@ export class DataStore {
 		for (const deckID of card.d) {
 			const deckData = this.getDeck(deckID);
 			console.assert(deckData);
-			if (deckData)
+			if (deckData !== null)
 				decks.push(deckData);
 		}
 		if (decks.length > 0)
@@ -191,16 +244,17 @@ export class DataStore {
 		return info;
 	}
 
-	//#region Decks
-
-	public createDeck(cb: (editor: DeckEditor) => any): DeckIDDataTuple {
+	/**
+		* @param cb Return value is ignored.
+		*/
+	public createDeck(cb: (editor: DeckEditor) => unknown): DeckIDDataTuple {
 
 		const editor = new DeckEditor(UniqueID.generateID(), {
 			n: "",
 			p: [],
 		});
 
-		cb(editor)
+		cb(editor);
 		this.data.decks[editor.id] = editor.data;
 		this.setDataDirty();
 		return { id: editor.id, data: editor.data };
@@ -243,7 +297,7 @@ export class DataStore {
 			predicate: (deck) => DataStore.Predicate.isParentDeck(deck, idToDelete),
 		}).forEach(childDeck => {
 			this.editDeck(childDeck.id, editor => {
-				editor.setParent(undefined);
+				editor.setParent(null);
 				return true;
 			});
 		});
@@ -261,8 +315,8 @@ export class DataStore {
 
 		const decks: DeckIDDataTuple[] = [];
 
-		for (const id of Object.keys(this.data.decks)) {
-			const deck = { id: id, data: this.data.decks[id] } satisfies DeckIDDataTuple;
+		for (const [id, data] of Object.entries(this.data.decks)) {
+			const deck = { id: id, data: data } satisfies DeckIDDataTuple;
 			if (!predicate || predicate(deck))
 				decks.push(deck);
 		}
@@ -271,10 +325,6 @@ export class DataStore {
 
 		return decks;
 	}
-
-	//#endregion
-
-	//#region
 
 	/**
 	* Deletes {@link CardData} with {@link id} from {@link DataStoreRoot.removed} and returns it.
@@ -290,8 +340,11 @@ export class DataStore {
 		if (!removedCard)
 			return null;
 
-		const removedNoteData = this.getRemovedNote(id.noteID, throwIfNotFound)!;
-		console.assert(removedNoteData);
+		const removedNoteData = this.getRemovedNote(id.noteID, throwIfNotFound);
+		Env.assert(removedNoteData);
+		if (removedNoteData === null)
+			return null;
+
 		delete removedNoteData.cs[id.cardIDOrThrow()];
 		this.setDataDirty();
 
@@ -309,7 +362,7 @@ export class DataStore {
 			const time = removedBeforeDate.getTime();
 			this.getAllRemovedCards(undefined, (_cardID: CardID, data: RemovedCardData) => {
 				const date = StatisticsHelper.ensureDate(data.date);
-				console.assert(date, "Expected date parsable string.");
+				Env.dev?.assert(date, "Expected date parsable string.");
 				return date && date.getTime() < time ? true : false;
 			}).forEach(tuple => this.deleteRemovedCard(tuple.id));
 		}
@@ -417,17 +470,13 @@ export class DataStore {
 		}
 	}
 
-	//#endregion
-
-	//#region Remove
-
 	public removeNote(noteID: NoteID) {
 		return this.moveActiveNoteToRemoved(noteID);
 	}
 
 	public async removeAllCards() {
-		for (const noteID of Object.keys(this.data.active)) {
-			for (const cardID of Object.keys(this.data.active[noteID].cs))
+		for (const [noteID, note] of Object.entries(this.data.active)) {
+			for (const cardID of Object.keys(note.cs))
 				this.moveActiveCardToRemoved(StatisticsHelper.createFullID(noteID, cardID));
 		}
 	}
@@ -463,15 +512,17 @@ export class DataStore {
 		id.throwIfNoCardID();
 
 		const note = this.getNote(id.noteID, throwIfNotFound);
-		let card: CardData | null = null;
+		if (note === null)
+			return null;
 
-		if (note && Object.prototype.hasOwnProperty.call(note.cs, id.cardID)) {
-			card = note.cs[id.cardID]
-			delete note.cs[id.cardID];
-			if (StatisticsHelper.isNoteEmpty(note))
-				this.deleteActiveNote(id.noteID);
-			this.setDataDirty();
-		}
+		const card = note.cs[id.cardID];
+		if (card === undefined)
+			return null;
+
+		delete note.cs[id.cardID];
+		if (StatisticsHelper.isNoteEmpty(note))
+			this.deleteActiveNote(id.noteID);
+		this.setDataDirty();
 
 		return card;
 	}
@@ -483,7 +534,7 @@ export class DataStore {
 	 */
 	private deleteActiveNote(noteID: NoteID, throwIfNotFound = false) {
 		const note = this.getNote(noteID, throwIfNotFound);
-		if (note) {
+		if (note !== null) {
 			delete this.data.active[noteID];
 			this.setDataDirty();
 		}
@@ -497,24 +548,26 @@ export class DataStore {
 	 */
 	private deleteRemovedNote(noteID: NoteID, throwIfNotFound = false) {
 		const note = this.getRemovedNote(noteID, throwIfNotFound);
-		if (note) {
+		if (note !== null) {
 			delete this.data.removed[noteID];
 			this.setDataDirty();
 		}
 		return note;
 	}
 
-	//#endregion
-
-	//#region Get
-
-	public getCard(id: FullID, throwIfNotFound = false) {
+	public getCard(id: FullID, throwIfNotFound = false): CardData | null {
 		id.throwIfNoNoteID();
 		id.throwIfNoCardID();
 
 		const data = this.getNote(id.noteID, throwIfNotFound)?.cs[id.cardID] ?? null;
 		if (data === null && throwIfNotFound)
 			throw new Error(`Card ${id} was not found.`);
+
+		if (data !== null) {
+			Env.assert(isCardData(data), "Invalid JSON for id:", id.toString());
+			validateCardData(data);
+		}
+
 		return data;
 	}
 
@@ -558,7 +611,9 @@ export class DataStore {
 	 * @returns
 	 */
 	public getAllCardsForDeck(deckID?: DeckID): CardIDDataTuple[] {
-		if (!deckID)
+		Env.log.d("DataStore:getAllCardsForDeck:deckID", deckID);
+		Env.dev?.assert(deckID === undefined || isString(deckID) && deckID !== Env.str.EMPTY, deckID);
+		if (deckID === undefined)
 			return this.getAllCards();
 
 		const data = this.getDeck(deckID, true);
@@ -574,7 +629,7 @@ export class DataStore {
 	}
 
 	private descendantDecks(parentID?: DeckID): DeckIDDataTuple[] {
-		if (!parentID)
+		if (parentID === undefined)
 			return [];
 
 		const childDecks = this.getAllDecks({
@@ -597,7 +652,7 @@ export class DataStore {
 		noteFilter?: (noteID: NoteID, data: NoteData) => boolean,
 		cardFilter?: (cardID: CardID, data: CardData) => boolean): CardIDDataTuple[] {
 
-		let cards: CardIDDataTuple[] = [];
+		const cards: CardIDDataTuple[] = [];
 
 		for (const [noteID, note] of Object.entries(this.data.active)) {
 			if (noteFilter && noteFilter(noteID, note) === false)
@@ -622,33 +677,40 @@ export class DataStore {
 		noteFilter?: (noteID: NoteID, data: RemovedNoteData) => boolean,
 		cardFilter?: (cardID: CardID, data: RemovedCardData) => boolean) {
 
-		let cards: RemovedCardIDDataTuple[] = [];
+		const cards: RemovedCardIDDataTuple[] = [];
 
 		for (const [noteID, removedData] of Object.entries(this.data.removed)) {
 
-			if (!removedData.cs) // Object.entries will throw
-				continue;
+			// The actual json values can contain anything (for example `"removed": { "ad": "s" }`).
+			// If, e.g., the value sent to `Object.entries` is `undefined`, it will throw.
+			if (Str.isNonEmpty(noteID) && isRemovedNoteData(removedData)) {
+				try {
+					// Run note filter
+					if (noteFilter && noteFilter(noteID, removedData) === false)
+						continue;
 
-			if (noteFilter && noteFilter(noteID, removedData) === false)
-				continue;
+					for (const [cardID, card] of Object.entries(removedData.cs)) {
+						// Run card filter
+						if (cardFilter && cardFilter(cardID, card) === false)
+							continue;
 
-			for (const [cardID, card] of Object.entries(removedData.cs)) {
-
-				if (cardFilter && cardFilter(cardID, card) === false)
-					continue;
-
-				cards.push({
-					id: FullID.create(noteID, cardID, true), // back sides are not stored
-					data: card
-				});
+						cards.push({
+							id: FullID.create(noteID, cardID, true), // back sides are not stored
+							data: card
+						});
+					}
+				}
+				catch (e) {
+					Env.log.e(e);
+				}
+			}
+			else {
+				Env.log.w("Invalid JSON value: noteID:", noteID, ", removedData:", removedData);
 			}
 		}
+
 		return cards;
 	}
-
-	//#endregion
-
-	//#region  Sync
 
 	/**
 	 *
@@ -681,7 +743,7 @@ export class DataStore {
 	public syncData(latestIDs: FullID[], inNoteID: NoteID, statisticsFactory: () => StatisticsData) {
 
 		Env.log.d(`DataStore:syncData:\n\tinNoteID: ${inNoteID},\n\tlatestIDs: ${latestIDs.map(id => `${id.cardSide}@${id.cardID}`)}`);
-		Env.dev(() => latestIDs.forEach(id => Env.assert(id.hasNoteID(inNoteID), `Expected all IDs to belong to ${inNoteID}: ${id}`)));
+		Env.dev?.run(() => latestIDs.forEach(id => Env.assert(id.hasNoteID(inNoteID), `Expected all IDs to belong to ${inNoteID}: ${id}`)));
 
 		// Latest data
 		const latestSet = new Set(latestIDs.filter(id => id.isFrontSide).map(id => {
@@ -722,21 +784,26 @@ export class DataStore {
 			// Neither new item nor removed
 			else if (noteData) {
 
-				const currentDeckIDs = noteData.cs[latestID.cardID].d;
-				let newDeckIDs: DeckID[] | undefined;
+				const currCollectionIDs = noteData.cs[latestID.cardID]?.d;
+				if (currCollectionIDs === undefined)
+					throw new UnexpectedUndefinedError();
+
+				let newCollectionIDs: DeckID[] | undefined;
 
 				if (latestID instanceof DeckableFullID) {
 					// Only update decks if changed
-					if (!latestID.isDecksEqual(currentDeckIDs))
-						newDeckIDs = latestID.deckIDs.filter(deckID => this.getDeck(deckID)); // Filter non-existing IDs
+					if (!latestID.isDecksEqual(currCollectionIDs))
+						newCollectionIDs = latestID.deckIDs.filter(deckID => this.getDeck(deckID)); // Filter non-existing IDs
 				}
 				else {
-					newDeckIDs = [];
+					// The data does not support collections.
+					if (currCollectionIDs.length > 0) // Just in case, if there are associated collections, make sure they are removed.
+						newCollectionIDs = [];
 				}
 
-				if (newDeckIDs) {
+				if (newCollectionIDs !== undefined) {
 					this.editCard(latestID, (editor) => {
-						editor.setDecks(newDeckIDs);
+						editor.setDecks(newCollectionIDs);
 						modifiedIDs.push(latestID);
 						return true;
 					});
@@ -748,10 +815,6 @@ export class DataStore {
 
 		return { addedIDs, removedIDs, modifiedIDs };
 	}
-
-	//#endregion
-
-	//#region Persisting data
 
 	public async save() {
 		Env.log.d(`DataStore:save: dirty: ${this._isDataDirty}`);
@@ -804,7 +867,7 @@ export class DataStore {
 			});
 		}
 		else {
-			Env.dev(() => {
+			Env.dev?.run(() => {
 				Env.assert(strictDeepEqual(changedData.decks, currentData.decks), "`collections` are not strictly equal");
 				Env.assert(strictDeepEqual(changedData.active, currentData.active), "`active` are not strictly equal");
 				Env.assert(strictDeepEqual(changedData.removed, currentData.removed), "`removed` are not strictly equal");
@@ -838,10 +901,6 @@ export class DataStore {
 	}
 
 	private registeredChangedCallbacks: DataChanged[] = [];
-
-	//#endregion
-
-	//#region
 
 	public readonly filter = {
 		cardsWithoutDeck: (card: CardIDDataTuple) => DataStore.Predicate.cardsInDeck(undefined)(card.id, card.data),
@@ -882,8 +941,6 @@ export class DataStore {
 			return a.data.n.localeCompare(b.data.n)
 		}
 	}
-
-	//#endregion
 }
 
 /** See {@link DataStore.onDataChangedExternally} */
@@ -897,18 +954,18 @@ export type DataChangedInfo = {
 
 class StatisticsHelper {
 
-	public static ensureDate(value: DateString | Date) {
+	public static ensureDate(value: IsoDateString | Date) {
 		if (isString(value))
 			value = new Date(value);
 		return isDate(value) ? value : null;
 	}
 
-	public static ensureDateString(value: DateString | Date | undefined) {
+	public static ensureDateString(value: IsoDateString | Date | undefined) {
 		if (value === undefined)
 			value = new Date();
 		if (isDate(value))
 			value = value.toISOString();
-		return value as DateString;
+		return value as IsoDateString;
 	}
 
 	public static isNoteEmpty(note: NoteData) {
@@ -923,11 +980,13 @@ class StatisticsHelper {
 		return FullID.create(noteID, cardID, true); // back sides are not stored
 	}
 
+	/** Creates a new {@link CardData} with created date set to current time. */
 	public static createCardData(decks: DeckID[], statistics: StatisticsData) {
 		return {
 			l: [],
 			d: decks,
 			s: statistics,
+			c: DateTime.toIso(new Date()),
 		} satisfies CardData;
 	}
 
@@ -947,7 +1006,8 @@ class StatisticsHelper {
 	public static removedCardToCard(removedCard: RemovedCardData): CardData {
 		const {
 			date,
-			...cardData } = removedCard;
+			...cardData
+		} = removedCard;
 		return cardData;
 	}
 

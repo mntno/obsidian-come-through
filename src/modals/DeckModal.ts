@@ -1,13 +1,14 @@
-import { App, ButtonComponent, Modal, Setting } from "obsidian";
-import { DeckEditor, DeckIDDataTuple, DataStore } from "DataStore";
-import { UIAssistant } from "UIAssistant";
-import { DeckID } from "FullID";
+import { DataStore, DeckEditor, DeckIDDataTuple } from "data/DataStore";
+import { DeckID } from "data/FullID";
+import { BaseModal } from "modals/BaseModal";
+import { App, ButtonComponent, Setting } from "obsidian";
+import { UIAssistant } from "ui/UIAssistant";
 
 
-export class DeckModal extends Modal {
+export class DeckModal extends BaseModal {
 
   private nameOfDeck: string = "";
-  private parentDeckID?: DeckID;
+  private parentDeckID: DeckID | null;
   private createButton: ButtonComponent;
   private result?: DeckIDDataTuple;
 
@@ -22,7 +23,7 @@ export class DeckModal extends Modal {
     private readonly data: DataStore,
     private readonly onSubmit: (deck: DeckIDDataTuple) => void,
     private readonly idToEdit?: DeckID) {
-    super(app);
+    super(app, { fullscreenOnLimitedScreenSpace: true });
 
     if (idToEdit) {
       const deckToEdit = data.getDeck(idToEdit, true)!;
@@ -49,13 +50,13 @@ export class DeckModal extends Modal {
       .setDesc(idToEdit ? "" : "To make this deck a subdeck, choose a parent deck.")
       .addDropdown((component) => {
 
-        component.addOption(UIAssistant.DECK_ID_UNDEFINED, "None");
+        component.addOption(UIAssistant.DECK_ID_NONE, "None");
         for (const deck of this.data.getAllDecks().filter(d => d.id !== this.idToEdit))
             component.addOption(deck.id, deck.data.n);
-        component.setValue(this.parentDeckID ?? UIAssistant.DECK_ID_UNDEFINED);
+        component.setValue(this.parentDeckID ?? UIAssistant.DECK_ID_NONE);
 
         component.onChange((value) => {
-          this.parentDeckID = value === UIAssistant.DECK_ID_UNDEFINED ? undefined : value;
+          this.parentDeckID = value === UIAssistant.DECK_ID_NONE ? null : value;
         });
       });
 

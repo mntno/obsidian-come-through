@@ -66,7 +66,7 @@ interface ExternalSectionCache extends SectionCache {
 	externalType: "frontmatter" //| "backmatter"
 }
 
-
+/** Provides a set of common helpers for interpreting the structure and metadata of markdown files. */
 export abstract class FileParser {
 
 	protected static readonly SECTION_TYPE_HEADING = "heading";

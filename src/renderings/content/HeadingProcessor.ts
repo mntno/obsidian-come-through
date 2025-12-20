@@ -1,4 +1,5 @@
-import { ContentRendererPostProcessor, ContentRendererProcessor, PostProcessorParameter } from "./ContentRendererProcessor";
+import { ContentRendererPostProcessor, ContentRendererProcessor, PostProcessorParameter } from "renderings/content/ContentRendererProcessor";
+import { UnexpectedUndefinedError } from "utils/errors";
 
 export class HeadingProcessor extends ContentRendererProcessor implements ContentRendererPostProcessor {
 	private readonly baseHeadingLevel: number;
@@ -70,6 +71,8 @@ export class HeadingProcessor extends ContentRendererProcessor implements Conten
 			// Copy attributes
 			for (let i = 0; i < heading.attributes.length; i++) {
 				const attr = heading.attributes[i];
+				if (attr === undefined)
+					throw new UnexpectedUndefinedError();
 				newHeading.setAttribute(attr.name, attr.value);
 			}
 

@@ -1,10 +1,11 @@
+import { FullID, IDFilter, NoteID } from "data/FullID";
 import { CardDeclarable, CardDeclarationAssistant, DefaultableCardDeclarable } from "declarations/CardDeclaration";
 import { CommandableDeclarable, CommandDeclarationAssistant } from "declarations/CommandDeclaration";
 import { Declaration, DeclarationRange } from "declarations/Declaration";
-import { FileParser, SectionRange } from "FileParser";
-import { FullID, IDFilter, NoteID } from "FullID";
 import { App, CachedMetadata, CacheItem, FrontMatterCache, HeadingCache, SectionCache, TFile } from "obsidian";
 import { asNoteID, fullIDFromDeclaration } from "TypeAssistant";
+import { UnexpectedUndefinedError } from "utils/errors";
+import { FileParser, SectionRange } from "utils/obs/FileParser";
 
 /**
  * Contains auxiliary information collected during the parsing process.
@@ -85,7 +86,7 @@ export class DeclarationParser extends FileParser {
 		// Check there headings that contain an ID
 		if (cache.headings) {
 			for (const currentHeading of cache.headings)
-				if (this.findFullIDInText(currentHeading.heading, noteID))
+				if (this.findFullIDInText(currentHeading.heading, noteID) !== null)
 					return true;
 		}
 
@@ -94,7 +95,7 @@ export class DeclarationParser extends FileParser {
 				if (this.isCodeSection(section)) {
 					if (fileContent) {
 						const info = this.parseCodeBlock(this.extractContentFromSection(section, fileContent));
-						if (info && Declaration.supportedCodeBlockLanguages.includes(info.language))
+						if (info !== null && Declaration.supportedCodeBlockLanguages.includes(info.language))
 							return true;
 					}
 					else {
@@ -171,7 +172,7 @@ export class DeclarationParser extends FileParser {
 		// Check there headings that contain an ID
 		for (const currentHeading of cache.headings ?? []) {
 			const id = this.findFullIDInText(currentHeading.heading, noteID);
-			if (id && !checkExistance(id)) {
+			if (id !== null && !checkExistance(id)) {
 				if (filter === undefined || (filter && filter(id)))
 					ids.push(id);
 			}
@@ -188,7 +189,7 @@ export class DeclarationParser extends FileParser {
 
 			// Explicit declarations
 			const explicitDecl = this.getDeclarationFromSection(section, noteID, fileContent, parseInfo);
-			if (explicitDecl)
+			if (explicitDecl !== null)
 				createAndAddIDFromDeclaration(explicitDecl);
 
 			// Auto generated declarations
@@ -214,14 +215,17 @@ export class DeclarationParser extends FileParser {
 
 		const match = this.FULL_ID_REGEX.exec(text);
 
-		if (match) {
-			const kind = match[1].toLowerCase();
-			const isFront = kind[0] === 'f';
-			const isBack = kind[0] === 'b';
+		if (match !== null) {
+			const kind = match[1]?.toLowerCase();
 			const cardID = match[2];
 
-			if (isFront || isBack)
-				return FullID.create(noteID, cardID, isFront);
+			if (kind !== undefined && cardID !== undefined) {
+				const isFront = kind[0] === 'f';
+				const isBack = kind[0] === 'b';
+
+				if (isFront || isBack)
+					return FullID.create(noteID, cardID, isFront);
+			}
 		}
 
 		return null;
@@ -241,7 +245,7 @@ export class DeclarationParser extends FileParser {
 					location: location,
 				});
 			});
-			if (declaration)
+			if (declaration !== null)
 				return declaration;
 		}
 		return null;
@@ -313,7 +317,7 @@ export class DeclarationParser extends FileParser {
 			}
 		);
 
-		if (parser) {
+		if (parser !== null) {
 			this.headingRangeForSection(section, cache, (commandDeclarationSection, inBetweenDelimiter, _sectionNumber, index, delimiters) => {
 				parser.parse(commandDeclarationSection.level, inBetweenDelimiter, index, delimiters);
 			});
@@ -384,24 +388,28 @@ export class DeclarationParser extends FileParser {
 
 		// Start at bottom. The first delimiter that's not after the section is the start delimiter the section belongs to.
 		for (let delimiterCounter = numberOfDelimiters - 1; delimiterCounter >= 0; delimiterCounter--) {
+			const delimiter = orderedDelimiters[delimiterCounter];
+			if (delimiter === undefined)
+				throw new UnexpectedUndefinedError();
 
 			// Delimiter is after section
-			if (orderedDelimiters[delimiterCounter].position.start.offset > section.position.end.offset)
+			if (delimiter.position.start.offset > section.position.end.offset)
 				continue;
 
-			const startDelimiter = orderedDelimiters[delimiterCounter];
-			range.start = startDelimiter;
+			range.start = delimiter;
 
 			// The start delimiter has been found. Now start walking toward the bottom again and let the predicates decide when the end delimiter is found.
 			for (let nextHeadingIndex = delimiterCounter + 1; nextHeadingIndex < numberOfDelimiters; nextHeadingIndex++) {
 				const maybeEndDelimiter = orderedDelimiters[nextHeadingIndex];
-				if (endPredicate(startDelimiter, maybeEndDelimiter)) {
+				if (maybeEndDelimiter === undefined)
+					throw new UnexpectedUndefinedError();
+				if (endPredicate(delimiter, maybeEndDelimiter)) {
 					range.end = maybeEndDelimiter;
 					break;
 				}
 				else {
 					inBetweenCallback?.(
-						startDelimiter,
+						delimiter,
 						maybeEndDelimiter,
 						nextHeadingIndex - (delimiterCounter + 1), // Zero-based index of the in-between delimiter.
 						nextHeadingIndex,

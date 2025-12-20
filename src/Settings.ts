@@ -1,7 +1,7 @@
-import { PluginSettingTab, Setting, Plugin } from "obsidian";
-import { PLUGIN_NAME } from "UIAssistant";
+import { Env } from "env";
 import { deepEqual } from 'fast-equals';
 import { isString } from "TypeAssistant";
+import { PLUGIN_NAME } from "ui/constants";
 
 export interface PluginSettings {
 	uiPrefix: string;
@@ -37,6 +37,13 @@ export interface FixedIntervalScheduler {
 
 export type SchedulerSetting = FsrsScheduler | FixedIntervalScheduler;
 const SCHEDULER_ID_DEFUALT = "default";
+const DEFAULT_SCHEDULER: FsrsScheduler = {
+	type: "fsrs",
+	config: {
+		enableFuzz: true,
+		reviewSortOrder: "due"
+	}
+} satisfies FsrsScheduler;
 
 export type SettingsChanged = (settings: PluginSettings, isExternal: boolean) => void;
 
@@ -57,13 +64,7 @@ export class SettingsManager {
 		removedItemsPurgeThreshold: 24 * 60 * 60,
 		defaultScheduler: SCHEDULER_ID_DEFUALT,
 		schedulers: {
-			[SCHEDULER_ID_DEFUALT]: {
-				type: "fsrs",
-				config: {
-					enableFuzz: true,
-					reviewSortOrder: "due"
-				}
-			}
+			[SCHEDULER_ID_DEFUALT]: DEFAULT_SCHEDULER
 		}
 	};
 
@@ -110,54 +111,8 @@ export class SettingsManager {
 	private registeredChangedCallbacks: SettingsChanged[] = [];
 
 	public get defaultScheduler(): SchedulerSetting {
-		return this.settings.schedulers[isString(this.settings.defaultScheduler) ? this.settings.defaultScheduler : SCHEDULER_ID_DEFUALT];
-	}
-}
-
-export class SettingTab extends PluginSettingTab {
-	private settingsManager: SettingsManager;
-
-	public constructor(plugin: Plugin, settingsManager: SettingsManager) {
-		super(plugin.app, plugin);
-		this.settingsManager = settingsManager;
-	}
-
-	private onChangedCallback: SettingsChanged = (_, isExternal) => {
-		if (isExternal)
-			this.display();
-	}
-
-	public display(): void {
-		this.settingsManager.registerOnChangedCallback(this.onChangedCallback);
-		const { containerEl } = this;
-		const settings = this.settingsManager.settings;
-
-		containerEl.empty();
-
-		new Setting(containerEl)
-			.setName("UI prefix")
-			.setDesc(`Adds a prefix to UI elements, such as menu items and notices, to help distinguish them from other sources when not obvious. Leave empty to disable.`)
-			.addText((component) => {
-				component.setValue(settings.uiPrefix);
-				component.onChange(async (value) => {
-					settings.uiPrefix = value;
-					await this.settingsManager.save();
-				});
-			});
-
-		new Setting(containerEl)
-			.setName("Hide card heading in review")
-			.setDesc(`Hide the headings that start the sections that contains cards’ sides.`)
-			.addToggle((component) => {
-				component.setValue(settings.hideCardSectionMarker);
-				component.onChange(async (value) => {
-					settings.hideCardSectionMarker = value;
-					await this.settingsManager.save();
-				});
-			});
-	}
-
-	public hide(): void {
-		this.settingsManager.unregisterOnChangedCallback(this.onChangedCallback);
+		const scheduler = this.settings.schedulers[isString(this.settings.defaultScheduler) ? this.settings.defaultScheduler : SCHEDULER_ID_DEFUALT];
+		Env.assert(scheduler !== undefined, "Corrupt settings.");
+		return scheduler !== undefined ? scheduler : DEFAULT_SCHEDULER;
 	}
 }

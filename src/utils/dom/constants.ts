@@ -1,48 +1,5 @@
-export const CssClass = {
-
-	Plugin: {
-		WORKSPACE_LEAF_CONTENT: "come-through-workspace-leaf-content"
-	},
-
-	MarkdownView: {
-		READING: () => "markdown-reading-view",
-
-		PREVIEW: () => [
-			"markdown-preview-view",
-			"markdown-rendered",
-			"node-insert-event",
-			"is-readable-line-width",
-			"allow-fold-headings",
-			"allow-fold-lists",
-			"show-indentation-guide",
-			"show-properties",
-		],
-
-		SIZER: () => [
-			"markdown-preview-sizer",
-			"markdown-preview-section",
-		],
-
-		PUSHER: () => [
-			"markdown-preview-pusher"
-		],
-
-		MOD: () => [
-			"mod-header",
-			"mod-ui"
-		],
-	},
-
-	Embed: {
-		INTERNAL: "internal-embed",
-		MEDIA: "media-embed",
-		AUDIO: "audio-embed",
-	},
-
-	State: {
-		LOADED: "is-loaded",
-		ERROR: "is-error",
-	}
+export const HtmlTag = {
+	SPAN: "span",
 } as const;
 
 export const HtmlAttribute = {
@@ -50,6 +7,13 @@ export const HtmlAttribute = {
 		NAME: "dir",
 		Values: {
 			AUTO: "auto"
+		}
+	},
+
+	Lang: {
+		NAME: "lang",
+		Values: {
+			THAI: "th"
 		}
 	},
 

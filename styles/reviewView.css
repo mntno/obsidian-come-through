@@ -1,0 +1,52 @@
+div.come-through-workspace-leaf-content[data-type='come-through-view-review'] .rating-buttons {
+	justify-content: center;
+	margin-top: var(--p-spacing);
+	flex-wrap: wrap;
+}
+
+div.come-through-workspace-leaf-content[data-type='come-through-view-review'] .rating-buttons,
+div.come-through-workspace-leaf-content[data-type='come-through-view-review'] .rating-buttons .button-pair {
+	display: flex;
+	gap: 1em;
+}
+
+div.come-through-workspace-leaf-content[data-type='come-through-view-review'] .rating-buttons > div > button {
+	line-height: 2.4;
+	height: auto;
+	width: auto;
+}
+
+/* Counter this selector: body.is-phone:not(.is-android:not(.material-off)) button:not(.clickable-icon) */
+div.come-through-workspace-leaf-content[data-type='come-through-view-review'] .view-content .rating-buttons > div > button {
+	justify-content: center;
+}
+
+div.come-through-workspace-leaf-content[data-type='come-through-view-review'] .rating-buttons button div {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+}
+
+div.come-through-workspace-leaf-content[data-type='come-through-view-review'] .rating-buttons button > div > span:nth-child(1) {
+	font-weight: bolder;
+}
+
+div.come-through-workspace-leaf-content[data-type='come-through-view-review'] .rating-buttons button > div > span:nth-child(2) {
+	font-weight: lighter;
+}
+
+div.come-through-workspace-leaf-content[data-type='come-through-view-review'] div.el-table.statistics:has(>table) {
+	padding: 0;
+	margin: 0;
+	margin-top: var(--p-spacing);
+	font-weight: var(--font-extralight);
+	display: flex;
+	justify-content: center;
+	overflow-x: auto;
+}
+
+div.come-through-workspace-leaf-content[data-type='come-through-view-review'] div.el-table.statistics table tfoot td {
+	text-align: center;
+	border: none;
+	padding-top: var(--size-4-2);
+}

@@ -1,0 +1,14 @@
+div.come-through-workspace-leaf-content[data-type='come-through-view-defined-content'] .markdown-reading-view details {
+	margin-block-start: var(--p-spacing);
+}
+
+div.come-through-workspace-leaf-content[data-type='come-through-view-defined-content'] .markdown-reading-view summary {
+	cursor: pointer;
+	color: var(--h2-color);
+	font: var(--h2-font);
+	line-height: var(--h2-line-height);
+	font-size: var(--h2-size);
+	font-style: var(--h2-style);
+	font-variant: var(--h2-variant);
+	font-weight: var(--h2-weight);
+}

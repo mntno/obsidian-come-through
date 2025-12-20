@@ -2,6 +2,7 @@ import { CommandableDeclarable } from "declarations/CommandDeclaration";
 import { CommandDeclarationParser } from "declarations/CommandDeclarationParser";
 import { CacheItem, HeadingCache } from "obsidian";
 import { isNumber } from "TypeAssistant";
+import { UnexpectedUndefinedError } from "utils/errors";
 
 /**
 * @abstract
@@ -62,9 +63,10 @@ export abstract class HeadingsDeclarationParser<T extends HeadingsCommandableDec
 		* @returns `null` if a next heading on the same level or lower was not found.
 		*/
 	protected static findNextHeading(headingLevel: number, index: number, delimiters: CacheItem[]) {
-		let nextDelimiter: CacheItem | null = null;
 		for (let nextIndex = index + 1; nextIndex < delimiters.length; nextIndex++) {
-			nextDelimiter = delimiters[nextIndex];
+			const nextDelimiter = delimiters[nextIndex];
+			if (nextDelimiter === undefined)
+					throw new UnexpectedUndefinedError();
 			if (HeadingsDeclarationParser.isHeadingCache(nextDelimiter) && headingLevel >= nextDelimiter.level)
 				return nextDelimiter;
 		}

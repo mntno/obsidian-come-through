@@ -1,5 +1,5 @@
 import { ContentParser } from "ContentParser";
-import { DataStore } from "DataStore";
+import { DataStore } from "data/DataStore";
 import t from "Localization";
 import { Menu, Scope, TFile, ViewStateResult, WorkspaceLeaf } from "obsidian";
 import { HeadingProcessor } from "renderings/content/HeadingProcessor";
@@ -38,14 +38,14 @@ export class DefinedContentView extends BaseView<DefinedContentViewState> {
 
 		this.navigation = true;
 		this.scope = new Scope(this.app.scope);
-		this.scope.register(["Mod"], "R", this.refreshView);
+		this.scope.register(["Mod"], "R", this.render);
 	}
 
-	public getViewType() {
+	public override getViewType(): string {
 		return DefinedContentView.TYPE;
 	}
 
-	public getDisplayText() {
+	public override getDisplayText(): string {
 		return t.views.declarations.title(this.file ?? undefined);
 	}
 
@@ -63,7 +63,7 @@ export class DefinedContentView extends BaseView<DefinedContentViewState> {
 		this.hasRendered = new WeakMap<HTMLDetailsElement, boolean>();
 	}
 
-	public override onPaneMenu(menu: Menu, source: 'more-options' | 'tab-header' | string) {
+	public override onPaneMenu(menu: Menu, source: 'more-options' | 'tab-header' | string): void {
 		super.onPaneMenu(menu, source);
 		if (source === "tab-header")
 			return;
@@ -72,22 +72,22 @@ export class DefinedContentView extends BaseView<DefinedContentViewState> {
 			item.setTitle("Reload");
 			item.setSection("pane");
 			item.setIcon("refresh-cw");
-			item.onClick(this.refreshView);
+			item.onClick(this.render);
 		});
 	}
 
-	protected onSetState(state: DefinedContentViewState, result: ViewStateResult): void {
+	protected override onSetState(state: DefinedContentViewState, result: ViewStateResult): void {
 		this.file = state.filePath ? this.app.vault.getFileByPath(state.filePath) : undefined;
 		this.contentRenderer.file = this.file;
 	}
 
-	protected onGetState(): DefinedContentViewState {
+	protected override onGetState(): DefinedContentViewState {
 		return {
 			filePath: this.file?.path,
 		}
 	}
 
-	protected override onDataChanged() {
+	protected override onDataChanged(): void {
 		// On file rename, this will be called superflously.
 		// But since this case is a rare and the solution to avoid the extra render call is too ugly, because of lack of obsidian APIs, it's not worth it implementing.
 		// So let it call render two times.
@@ -110,10 +110,10 @@ export class DefinedContentView extends BaseView<DefinedContentViewState> {
 		}
 	};
 
-	protected async onRender() {
+	protected override async onRender(): Promise<void> {
 		if (!this.file) {
 			console.error("No file set.")
-			this.viewAssistant.createPara({ text: t.views.declarations.fileNotSet });
+			this.dom.create.para({ text: t.views.declarations.fileNotSet });
 			return;
 		}
 
@@ -121,8 +121,8 @@ export class DefinedContentView extends BaseView<DefinedContentViewState> {
 		this.contentRenderer.setCustomProcessors([new HeadingProcessor(3)]);
 		this.hasRendered = new WeakMap<HTMLDetailsElement, boolean>();
 
-		this.viewAssistant.createEl("h1", { text: t.views.declarations.title(this.file) });
-		const infoPara = this.viewAssistant.createParaWrapper();
+		this.dom.create.el("h1", { text: t.views.declarations.title(this.file) });
+		const infoPara = this.dom.create.paraWrapper();
 
 		const parsedContent = await ContentParser.getCardFromFile(this.file, this.app, {
 			contentRead: {
@@ -130,8 +130,8 @@ export class DefinedContentView extends BaseView<DefinedContentViewState> {
 			}
 		});
 
-		var numberOfContentDefinitions = 0;
-		var numberOfIncompleteContentDefinitionsInFile = 0;
+		let numberOfContentDefinitions = 0;
+		let numberOfIncompleteContentDefinitionsInFile = 0;
 
 		for (const parsedUnit of Object.values(parsedContent)) {
 
@@ -155,7 +155,7 @@ export class DefinedContentView extends BaseView<DefinedContentViewState> {
 			}
 		}
 
-		var markdownText = this.app.fileManager.generateMarkdownLink(this.file, "") + // custom view has not sourcePath.
+		const markdownText = this.app.fileManager.generateMarkdownLink(this.file, "") + // custom view has not sourcePath.
 			` contains declarations that defines ${numberOfContentDefinitions + numberOfIncompleteContentDefinitionsInFile} content blocks` +
 			`${numberOfIncompleteContentDefinitionsInFile > 0 ? " (" + numberOfIncompleteContentDefinitionsInFile + " incomplete)" : ""}` +
 			`, amounting to ${numberOfContentDefinitions / 2} review units.`;
@@ -164,7 +164,7 @@ export class DefinedContentView extends BaseView<DefinedContentViewState> {
 	}
 
 	private createDefinedContentBlockSection(summary: string, content?: string) {
-		this.viewAssistant.createEl("details", undefined, (detailsEl) => {
+		this.dom.create.el("details", undefined, (detailsEl) => {
 			detailsEl.createEl("summary", { text: summary });
 			const contentDiv = detailsEl.createDiv();
 			this.contentRenderer.registerDomEvent(detailsEl, "toggle", async () => {

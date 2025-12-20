@@ -1,10 +1,11 @@
 import { CardDeclarationAssistant, IDScope } from "declarations/CardDeclaration";
 import { Declaration } from "declarations/Declaration";
 import { DeclarationParser } from "declarations/DeclarationParser";
-import { FullSectionRange, SectionRange } from "FileParser";
-import { CardID, FullID, NoteID } from "FullID";
+import { FullSectionRange, SectionRange } from "utils/obs/FileParser";
+import { CardID, FullID, NoteID } from "data/FullID";
 import { App, CachedMetadata, HeadingCache, SectionCache, TFile } from "obsidian";
 import { asNoteID, fullIDFromDeclaration } from "TypeAssistant";
+import { UnexpectedUndefinedError } from "utils/errors";
 
 /**
 	* The result of attempting to retrieve the content of a particular {@link FullID}.
@@ -160,7 +161,8 @@ export class ContentParser extends DeclarationParser {
 			await this.getContentFromFile(file, app, parseResult, predicate, options);
 
 			// As soon as both sides are found, stop iterating through the rest of the files.
-			if (Object.hasOwn(parseResult, cardID) && this.isComplete(parseResult[cardID]))
+			const maybeCard = parseResult[cardID];
+			if (maybeCard !== undefined && this.isComplete(maybeCard))
 				break;
 		}
 
@@ -183,8 +185,7 @@ export class ContentParser extends DeclarationParser {
 
 		const complete: Record<CardID, ParsedCardResult> = {};
 
-		for (const cardId in maybeIncompleteCards) {
-			const maybe = maybeIncompleteCards[cardId];
+		for (const [cardId, maybe] of Object.entries(maybeIncompleteCards)) {
 			if (this.isComplete(maybe)) {
 				complete[cardId] = {
 					complete: maybe,
@@ -248,6 +249,9 @@ export class ContentParser extends DeclarationParser {
 		for (let headingIndex = 0; headingIndex < numberOfHeadings; headingIndex++) {
 
 			const currentHeading = headings[headingIndex];
+			if (currentHeading === undefined)
+				throw new UnexpectedUndefinedError();
+
 			const id = this.findFullIDInText(currentHeading.heading, noteID);
 			if (!id)
 				continue;
@@ -258,7 +262,7 @@ export class ContentParser extends DeclarationParser {
 
 			while (nextHeadingIndex < numberOfHeadings && nextFrontHeadingStartPos === null) {
 				const nextHeading = headings[nextHeadingIndex];
-				if (nextHeading.level <= currentHeading.level)
+				if (nextHeading !== undefined && nextHeading.level <= currentHeading.level)
 					nextFrontHeadingStartPos = nextHeading;
 				nextHeadingIndex += 1;
 			}
@@ -365,6 +369,9 @@ export class ContentParser extends DeclarationParser {
 				result[cardID] = {};
 
 			const card = result[cardID];
+			if (card === undefined)
+				throw new UnexpectedUndefinedError();
+
 			if (idContentInfo.id.isFrontSide) {
 				card.frontMarkdown = getContent(idContentInfo, contentInfos);
 				card.frontID = idContentInfo.id;

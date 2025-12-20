@@ -1,34 +1,33 @@
 import t from "Localization";
-import { App, Modal, Setting } from "obsidian";
-import { Platform } from 'obsidian';
+import { BaseModal } from "modals/BaseModal";
+import { App, Platform, Setting } from "obsidian";
 
-/** @todo Make general */
-export class ConfirmationModal extends Modal {
+export class ConfirmationModal extends BaseModal {
 	public onButton1Click?: () => void;
 	public onButton2Click?: () => void;
 	public onClosed?: () => void;
 	private canClose = false;
 
 	constructor(app: App) {
-		super(app);
+		super(app, { fullscreenOnLimitedScreenSpace: true });
 
 		this.setTitle(t.modals.confirmation.title);
 
 		new Setting(this.contentEl).setDesc(createFragment((f) => {
-			f.createEl("i", { text: "Plugin: Come Through" });
-			f.createEl("p").appendText("Detected changes to data (such as cards, decks, rating statistics, etc) from an external source. If this change was expected, e.g., you created a card on another device that syncs with this one, click Accept changes.");
+			f.createEl("i", { text: t.modals.confirmation.pluginName });
+			f.createEl("p").appendText(t.modals.confirmation.description);
 
-			f.createEl("p").createEl("b", { text: "Accept changes" });
-			f.createEl("p").appendText("Allow this device’s cards, decks, rating statistics, etc, to be replaced with those from the other device.");
+			f.createEl("p").createEl("b", { text: t.modals.confirmation.acceptChangesTitle });
+			f.createEl("p").appendText(t.modals.confirmation.acceptChangesDescription);
 
-			f.createEl("p").createEl("b", { text: "Reject changes" });
-			f.createEl("p").appendText("Keep this device’s cards, decks, rating statistics, etc. Having selected this option you should allow the other device(s) to overwrite its data.");
+			f.createEl("p").createEl("b", { text: t.modals.confirmation.rejectChangesTitle });
+			f.createEl("p").appendText(t.modals.confirmation.rejectChangesDescription);
 		}));
 
 		new Setting(this.contentEl)
 			.addButton((button) => {
 				button.buttonEl.tabIndex = -1;
-				button.setButtonText(Platform.isMobile ? "Accept changes" : "Accept changes by other device");
+				button.setButtonText(Platform.isMobile ? t.modals.confirmation.acceptChangesTitle : t.modals.confirmation.acceptChangesButton);
 				button.onClick(() => {
 					button.setDisabled(true);
 					this.onButton1Click?.();
@@ -37,7 +36,7 @@ export class ConfirmationModal extends Modal {
 			})
 			.addButton((button) => {
 				button.buttonEl.tabIndex = -1;
-				button.setButtonText(Platform.isMobile ? "Reject changes" : "Reject changes by other device");
+				button.setButtonText(Platform.isMobile ? t.modals.confirmation.rejectChangesTitle : t.modals.confirmation.rejectChangesButton);
 				button.onClick(() => {
 					button.setDisabled(true);
 					this.onButton2Click?.();

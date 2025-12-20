@@ -1,9 +1,5 @@
 # vscode
-.vscode 
-
-# Intellij
-*.iml
-.idea
+.vscode
 
 # npm
 node_modules
@@ -22,6 +18,7 @@ data.json
 
 # This plugin
 
-## The compiled main.js file.
 main.js
+styles.css
 
+/dist/

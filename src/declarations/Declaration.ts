@@ -1,7 +1,7 @@
-import { FileParser } from "FileParser";
+import { FileParser } from "utils/obs/FileParser";
 import { parseYaml, stringifyYaml } from "obsidian";
 import { isObject, isString } from "TypeAssistant";
-import { UniqueID } from "UniqueID";
+import { UniqueID } from "data/UniqueID";
 
 export interface Declarable {
 	[key: string]: unknown;

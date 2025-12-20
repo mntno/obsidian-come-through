@@ -1,6 +1,6 @@
 import { CardDeclaration, IDScope } from "declarations/CardDeclaration";
 import { CommandableDeclarable } from "declarations/CommandDeclaration";
-import { FileParser, SectionRange } from "FileParser";
+import { FileParser, SectionRange } from "utils/obs/FileParser";
 import { CacheItem } from "obsidian";
 
 export interface CommandDeclarationParsable {
@@ -51,7 +51,7 @@ export abstract class CommandDeclarationParser<T extends CommandableDeclarable>
 	 */
 	protected lastDeclaration() {
 		const last = this.generatedDeclarations.last();
-		if (!last)
+		if (last === undefined)
 			throw new Error(`Expected at least one generated declaration.`);
 		return last;
 	}

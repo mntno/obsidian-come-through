@@ -1,0 +1,10 @@
+.come-through-modal-content table {
+	border-spacing: 0;
+	border-style: none;
+}
+
+/* Make tables left aligned when in the control section that is styled as the description section. */
+.come-through-modal-content .setting-item-control table {
+	white-space: nowrap;
+	text-align: left;
+}

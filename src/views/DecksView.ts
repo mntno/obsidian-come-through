@@ -1,9 +1,8 @@
-import { DataStore } from "DataStore";
+import { DataStore } from "data/DataStore";
 import { DeckModal } from "modals/DeckModal";
-import { Menu, setIcon, setTooltip, ViewStateResult, WorkspaceLeaf } from "obsidian";
+import { IconName, Menu, setIcon, setTooltip, ViewStateResult, WorkspaceLeaf } from "obsidian";
 import { SettingsManager } from "Settings";
 import { BaseView, BaseViewState } from "views/BaseView";
-
 
 export class DecksView extends BaseView<BaseViewState> {
 
@@ -18,26 +17,26 @@ export class DecksView extends BaseView<BaseViewState> {
 		this.navigation = true;
 	}
 
-	public override getIcon() {
+	public override getIcon(): IconName {
 		return "file-stack";
 	}
 
-	public getViewType(): string {
+	public override getViewType(): string {
 		return DecksView.TYPE;
 	}
 
-	public getDisplayText(): string {
+	public override getDisplayText(): string {
 		return "Decks";
 	}
 
-	protected onSetState(state: BaseViewState, result: ViewStateResult): void {
+	protected override onSetState(state: BaseViewState, result: ViewStateResult): void {
 	}
 
-	protected onGetState(): BaseViewState {
+	protected override onGetState(): BaseViewState {
 		return {};
 	}
 
-	public override onPaneMenu(menu: Menu, source: 'more-options' | 'tab-header' | string) {
+	public override onPaneMenu(menu: Menu, source: 'more-options' | 'tab-header' | string): void {
 		super.onPaneMenu(menu, source);
 		if (source === "tab-header")
 			return;
@@ -46,86 +45,87 @@ export class DecksView extends BaseView<BaseViewState> {
 			item.setTitle("Reload");
 			item.setSection("pane");
 			item.setIcon("refresh-cw");
-			item.onClick(this.refreshView);
+			item.onClick(this.render);
 		});
 	}
 
-	protected async onRender() {
+	protected override async onRender(): Promise<void> {
 
 		const allCards = this.data.getAllCards();
 		const decks = this.data.getAllDecks();
 		const numberOfCardsInDefaultDeck = allCards.filter(this.data.filter.cardsWithoutDeck).length;
 
-		//this.viewAssistant.createEl("h1", { text: "Decks" });
+		//this.dom.create.el("h1", { text: "Decks" });
 
-		this.viewAssistant.createPara({
+		this.dom.create.para({
 			text: `There are ${allCards.length - numberOfCardsInDefaultDeck} cards in a total of ${decks.length} decks.`
 		});
 
 		if (numberOfCardsInDefaultDeck > 0) {
-			this.viewAssistant.createPara({
+			this.dom.create.para({
 				text: `${(numberOfCardsInDefaultDeck == 1 ? "1 card is" : `${numberOfCardsInDefaultDeck} cards are`)} not assigned to any deck.`
 			});
 		}
 
-		const table = this.viewAssistant.createTable()
-		const header = table.createEl("thead");
-		header.createEl("tr", {}, (headerRow) => {
-			headerRow.createEl("th", { text: "Name" });
-			headerRow.createEl("th", { text: "Cards" });
-			headerRow.createEl("th", { text: "Parent deck" });
-			headerRow.createEl("th", { text: "" }, (th) => {
-				th.createEl("button", { text: "Add" }, (button) => {
-					setIcon(button, "plus");
-					setTooltip(button, "Add new deck");
-					this.contentRenderer.registerDomEvent(button, "click", () => new DeckModal(this.app, this.data, () => { }).open());
-				});
-			});
-		});
+		this.dom.create.table((section) => {
 
-		const body = table.createEl("tbody");
-
-		for (const deck of decks) {
-			const numberOfCardsInDeck = allCards.filter(card => this.data.filter.cardsInDeck(deck.id, card)).length;
-			const rowID = body.createEl("tr");
-
-			rowID.createEl("td", { text: deck.data.n });
-			rowID.createEl("td", {
-				text: numberOfCardsInDeck.toString()
-			});
-			rowID.createEl("td", {
-				text: deck.data.p.length == 0 ? "None" : deck.data.p
-					.map(parentID => this.data.getDeck(parentID))
-					.filter(d => d !== null)
-					.map(d => d.n)
-					.join(", ")
-			});
-			rowID.createEl("td", {}, (td) => {
-				const ellipsisButton = td.createEl("button", {}, (button) => {
-
-					this.contentRenderer.registerDomEvent(button, 'click', (evt: MouseEvent) => {
-						const menu = new Menu();
-						menu.addItem((item) => {
-							item.setTitle("Edit");
-							item.setIcon("pen");
-							item.onClick(() => new DeckModal(this.app, this.data, () => { }, deck.id).open());
+			section.setHeader((row) => {
+				row.add((col) => {
+					col.add({ text: "Name" });
+					col.add({ text: "Cards" });
+					col.add({ text: "Parent deck" });
+					col.add(undefined, (el) => {
+						el.createEl("button", { text: "Add" }, (button) => {
+							setIcon(button, "plus");
+							setTooltip(button, "Add new deck");
+							this.contentRenderer.registerDomEvent(button, "click", () => new DeckModal(this.app, this.data, () => { }).open());
 						});
-
-						menu.addItem((item) => {
-							item.setTitle("Delete")
-							item.setIcon("trash")
-							item.setDisabled(numberOfCardsInDeck > 0)
-							item.onClick(async () => {
-								this.data.deleteDeck(deck.id, undefined, true);
-								await this.data.save();
-							});
-						});
-
-						menu.showAtMouseEvent(evt);
 					});
 				});
-				setIcon(ellipsisButton, "ellipsis-vertical");
 			});
-		}
+
+			section.addBody((row) => {
+				for (const deck of decks) {
+					const numberOfCardsInDeck = allCards.filter(card => this.data.filter.cardsInDeck(deck.id, card)).length;
+					row.add((col) => {
+						col.add({ text: deck.data.n });
+						col.add({ text: numberOfCardsInDeck.toString() });
+						col.add({
+							text: deck.data.p.length == 0 ? "None" : deck.data.p
+								.map(parentID => this.data.getDeck(parentID))
+								.filter(d => d !== null)
+								.map(d => d.n)
+								.join(", ")
+						});
+						col.add(undefined, (el) => {
+							const ellipsisButton = el.createEl("button", undefined, (button) => {
+
+								this.contentRenderer.registerDomEvent(button, 'click', (evt: MouseEvent) => {
+									const menu = new Menu();
+									menu.addItem((item) => {
+										item.setTitle("Edit");
+										item.setIcon("pen");
+										item.onClick(() => new DeckModal(this.app, this.data, () => { }, deck.id).open());
+									});
+
+									menu.addItem((item) => {
+										item.setTitle("Delete")
+										item.setIcon("trash")
+										item.setDisabled(numberOfCardsInDeck > 0)
+										item.onClick(async () => {
+											this.data.deleteDeck(deck.id, undefined, true);
+											await this.data.save();
+										});
+									});
+
+									menu.showAtMouseEvent(evt);
+								});
+							});
+							setIcon(ellipsisButton, "ellipsis-vertical");
+						});
+					});
+				}
+			});
+		});
 	}
 }

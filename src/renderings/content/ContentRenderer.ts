@@ -1,12 +1,13 @@
-import { App, Component, MarkdownRenderer, TFile } from "obsidian";
-import { AudioProcessor } from "./AudioProcessor";
-import { ContentProcessorConfig, ContentRendererProcessor, PostProcessorParameter, PreProcessorParameter } from "./ContentRendererProcessor";
-import { HtmlElementWrapperProcessor } from "./HtmlElementWrapperProcessor";
-import { LinkProcessor } from "./LinkProcessor";
-import { VideoProcessor } from "./VideoProcessor";
 import { Env } from "env";
-import { RecycleComponent } from "renderings/RecycleComponent";
+import { App, Component, MarkdownRenderer, TFile } from "obsidian";
+import { AudioProcessor } from "renderings/content/AudioProcessor";
+import { ContentProcessorConfig, ContentRendererProcessor, PostProcessorParameter, PreProcessorParameter } from "renderings/content/ContentRendererProcessor";
+import { HtmlElementWrapperProcessor } from "renderings/content/HtmlElementWrapperProcessor";
+import { LinkProcessor } from "renderings/content/LinkProcessor";
+import { VideoProcessor } from "renderings/content/VideoProcessor";
+import { RecycleComponent } from "utils/obs/RecycleComponent";
 import { PluginSettings } from "Settings";
+import { Async } from "utils/ts";
 
 export function createRenderConfig(settings: PluginSettings): ContentProcessorConfig {
 	return {
@@ -38,16 +39,18 @@ export class ContentRenderer extends RecycleComponent {
 	private customProcessors: ContentRendererProcessor[] = [];
 
 	public constructor(app: App, config: ContentProcessorConfig) {
+		Env.log.d("ContentRenderer:constructor");
 		super();
 		this.app = app;
 		this.config = config;
 	}
 
 	protected onRecycled(component: Component): void {
+		Env.log.d("ContentRenderer:onRecycled");
 
 		/** These will always run, and before any custom ones. */
 		this.defaultProcessors = [
-			new HtmlElementWrapperProcessor({ applyLangTagsToNonLatinScripts: false }),
+			new HtmlElementWrapperProcessor({ applyLangTagsToNonLatinScripts: true }),
 			new LinkProcessor(),
 			new AudioProcessor(),
 			new VideoProcessor(),
@@ -57,12 +60,14 @@ export class ContentRenderer extends RecycleComponent {
 	}
 
 	protected onRecycling(): void {
+		Env.log.d("ContentRenderer:onRecycling");
 		this.defaultProcessors = [];
 		this.customProcessors = [];
 	}
 
 	/** Set processes that will be used in all following calls to {@link render}, replacing any previous ones. Note that these will get unloaded and removed on recycling and therefore, if desired, need to be created and set again ahead of any following call to {@link render}. */
 	public setCustomProcessors(processors: ContentRendererProcessor[]) {
+		Env.log.d("ContentRenderer:setCustomProcessors");
 		this.customProcessors.forEach(p => this.recycleComponent.removeChild(p));
 		this.customProcessors = processors;
 		this.customProcessors.forEach(p => this.recycleComponent.addChild(p));
@@ -70,6 +75,7 @@ export class ContentRenderer extends RecycleComponent {
 
 	/** Note that these will get unloaded and removed on recycling and therefore, if desired, need to be created and set again ahead of any following call to {@link render}. */
 	public addCustomProcessors(processors: ContentRendererProcessor[]) {
+		Env.log.d("ContentRenderer:addCustomProcessors");
 		processors.forEach(p => {
 			this.customProcessors.push(p);
 			this.recycleComponent.addChild(p);
@@ -78,6 +84,7 @@ export class ContentRenderer extends RecycleComponent {
 
 	/** It is only necessary to remove processors if you do not want to use them during the next call to {@link render}. */
 	public removeCustomProcessors(processors: ContentRendererProcessor[]) {
+		Env.log.d("ContentRenderer:removeCustomProcessors");
 		processors.forEach(p => {
 			this.customProcessors.remove(p);
 			this.recycleComponent.removeChild(p);
@@ -85,15 +92,19 @@ export class ContentRenderer extends RecycleComponent {
 	}
 
 	/**
-		*
 		* @param markdown
 		* @param el
-		* @param options Values set here are only valid during this rendering pass. Processors are unloaded.
-		* @returns
+		* @param options
+		* @throws Throws a {@link TimeoutError} if the promise does not settle within the specified timeout (default 4000ms).
 		*/
-	public async render(markdown: string, el: HTMLElement, options?: { sourcePath?: string, processors?: ContentRendererProcessor[] }): Promise<void> {
-		const sourcePath = options?.sourcePath ?? this.file?.path;
-		const processors: ContentRendererProcessor[] = options?.processors ?? [];
+	public async render(markdown: string, el: HTMLElement, options?: { sourcePath?: string, processors?: ContentRendererProcessor[], timeoutMs?: number }): Promise<void> {
+		const {
+			sourcePath = this.file?.path,
+			processors = [],
+			timeoutMs = 4000,
+		} = options ?? {};
+
+		Env.log.d("ContentRenderer:render: processors", processors, sourcePath);
 
 		if (!sourcePath) {
 			el.createSpan({ text: "Failed to render." });
@@ -124,15 +135,17 @@ export class ContentRenderer extends RecycleComponent {
 		// default run first
 		const allProcessors = [...this.defaultProcessors, ...this.customProcessors, ...processors];
 
-		Env.log.view(`Running ${allProcessors.filter(p => p.isPreProcessor()).length} pre processors: ${allProcessors.filter(p => p.isPreProcessor()).map(a => a.constructor.name).join(", ")}`);
+		Env.log.view(`ContentRenderer:render: Running ${allProcessors.filter(p => p.isPreProcessor()).length} pre processors: ${allProcessors.filter(p => p.isPreProcessor()).map(a => a.constructor.name).join(", ")}`);
 		for (const processor of allProcessors) {
 			if (processor.isPreProcessor())
 				processor.handleMarkdown(preParameter);
 		}
 
-		await MarkdownRenderer.render(this.app, preParameter.markdown, el, sourcePath, this.recycleComponent);
+		Env.log.view("ContentRenderer:render: calling `MarkdownRenderer`, timeout", timeoutMs);
+		await Async.withTimeout(MarkdownRenderer.render(this.app, preParameter.markdown, el, sourcePath, this.recycleComponent), timeoutMs);
+		Env.log.view("\tRendering done.");
 
-		Env.log.view(`Running ${allProcessors.filter(p => p.isPostProcessor()).length} post processors: ${allProcessors.filter(p => p.isPostProcessor()).map(a => a.constructor.name).join(", ")}`);
+		Env.log.view(`ContentRenderer:render: Running ${allProcessors.filter(p => p.isPostProcessor()).length} post processors: ${allProcessors.filter(p => p.isPostProcessor()).map(a => a.constructor.name).join(", ")}`);
 		for (const processor of allProcessors) {
 			if (processor.isPostProcessor())
 				processor.handleHtml(postParameter);

@@ -1,19 +1,17 @@
+import { DeckIDDataTuple } from "data/DataStore";
+import { DeckID } from "data/FullID";
 import { App, MarkdownView, Menu, MenuItem, Notice } from "obsidian";
 import { SettingsManager } from "Settings";
-import { DeckIDDataTuple } from "DataStore";
+import { Icon, PLUGIN_NAME } from "ui/constants";
 
-export const PLUGIN_NAME = "Come Through";
-export const PLUGIN_ICON = "drill";
-export const CARD_FRONT_ICON = "file-output";
-export const CARD_BACK_ICON = "file-input";
 
 export class UIAssistant {
 
   /**
    * Deck ID to use to represent unassigned deck when a string is required to identify UI elements.
-   * See, e.g, {@link allDecksOptionItem}.
+   * For example string values in DOM elements.
    */
-  public static readonly DECK_ID_UNDEFINED = "";
+  public static readonly DECK_ID_NONE: DeckID = "0000";
 
   private settingsManager: SettingsManager;
 
@@ -62,7 +60,7 @@ export class UIAssistant {
       section,
       checked,
       onClick,
-      icon = PLUGIN_ICON,
+      icon = Icon.PLUGIN,
       prefix = true,
       isLabel = false,
     } = options || {};
@@ -105,11 +103,11 @@ export class UIAssistant {
     return notice;
   }
 
-  public static allDecksOptionItem(includeDefaultDeck?: string): DeckIDDataTuple {
+  public static allDecksOptionItem(): DeckIDDataTuple {
     return {
-      id: UIAssistant.DECK_ID_UNDEFINED,
+      id: UIAssistant.DECK_ID_NONE,
       data: {
-        n: typeof includeDefaultDeck === "string" ? includeDefaultDeck : "All Decks",
+        n: "All Decks",
         p: []
       }
     };

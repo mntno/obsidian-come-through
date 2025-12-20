@@ -1,5 +1,6 @@
 import { Env } from "env";
 import { App, Component } from "obsidian";
+import { getDoc } from "utils/obs/dom";
 
 export type MediaContentProcessorConfig = {
 	preventMultiplePlayback: boolean;
@@ -42,12 +43,12 @@ export abstract class ContentRendererProcessor extends Component {
 	}
 
 	public override onload(): void {
-		Env.log.view(`ContentRendererPostProcessor:onload: `+ this.constructor.name);
+		Env.log.d("ContentRendererPostProcessor:onload:", this.constructor.name);
 		super.onload();
 	}
 
 	public override onunload(): void {
-		Env.log.view(`ContentRendererPostProcessor:onunload: `+ this.constructor.name);
+		Env.log.d("ContentRendererPostProcessor:onunload:", this.constructor.name);
 		super.onunload();
 	}
 
@@ -61,5 +62,22 @@ export abstract class ContentRendererProcessor extends Component {
 		} catch {
 			return null;
 		}
+	}
+}
+
+export class ContentRendererPostProcessorAssistant {
+
+	public param: PostProcessorParameter;
+
+	constructor(param: PostProcessorParameter) {
+		this.param = param;
+	}
+
+	public get doc() {
+		return getDoc(this.param.el);
+	}
+
+	public get el() {
+		return this.param.el;
 	}
 }

@@ -3,6 +3,7 @@ import { CommandableDeclarable } from "declarations/CommandDeclaration";
 import { CommandDeclarationParsable, CommandDeclarationParser } from "declarations/CommandDeclarationParser";
 import { HeadingsCommandableAssistant, HeadingsCommandableDeclarable } from "declarations/commands/HeadingsCommandable";
 import { CacheItem, HeadingCache } from "obsidian";
+import { UnexpectedUndefinedError } from "utils/errors";
 
 export interface HeadingAndDelimiterDeclarable extends HeadingsCommandableDeclarable {
 	delimiter: "horizontal rule"
@@ -87,6 +88,8 @@ export class HeadingAndDelimiterParser extends CommandDeclarationParser<HeadingA
 		let nextDelimiter: CacheItem | null = null;
 		for (let nextIndex = index + 1; nextIndex < delimiters.length; nextIndex++) {
 			const maybeNextDelimiter = delimiters[nextIndex];
+			if (maybeNextDelimiter === undefined)
+				throw new UnexpectedUndefinedError();
 
 			// Front side should end as soon as the first delimiter (as specified by the declaration) is found.
 			if (!this.lastFrontHeadingLevel && HeadingAndDelimiterParser.isSectionType(maybeNextDelimiter, HeadingAndDelimiterParser.SECTION_TYPE_THEMATICBREAK))
@@ -119,7 +122,8 @@ export class HeadingAndDelimiterParser extends CommandDeclarationParser<HeadingA
 
 	private tryParseUniqueID(text: string) {
 		const match = this.FULL_ID_REGEX.exec(text);
-		return match ? match[1].toLowerCase() : null;
+		const result = match?.[1];
+		return result !== undefined ? result.toLowerCase() : null;
 	}
 	protected readonly FULL_ID_REGEX = /@([^\s]+)/i;
 

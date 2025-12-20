@@ -1,4 +1,4 @@
-import { DeclarationRenderable, DeclarationRenderAssistant, DeclarationRenderer } from "./DeclarationRenderable";
+import { DeclarationRenderable, DeclarationRenderAssistant, DeclarationRenderer } from "renderings/declarations/DeclarationRenderable";
 import { Declarable } from "declarations/Declaration";
 
 

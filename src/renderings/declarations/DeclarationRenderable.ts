@@ -1,7 +1,7 @@
-import { Component, setIcon } from "obsidian";
-import { UIAssistant } from "UIAssistant";
+import { DeckIDDataTuple } from "data/DataStore";
 import { DeckableDeclarable, Declarable } from "declarations/Declaration";
-import { DeckIDDataTuple } from "DataStore";
+import { Component, setIcon } from "obsidian";
+import { UIAssistant } from "ui/UIAssistant";
 
 export type DeclarationChangedType = "deckAdded" | "deckChanged";
 export type DeclarationChangedEvent = (declaration: DeckableDeclarable, type: DeclarationChangedType, selectEl: HTMLSelectElement) => void;
@@ -89,7 +89,7 @@ export class DeclarationRenderAssistant {
 		const deckSelectEl = tdDropdown.createEl("select", { cls: "dropdown" }, (el) => {
 			el.createEl("option", {
 				text: "None",
-				value: UIAssistant.DECK_ID_UNDEFINED,
+				value: UIAssistant.DECK_ID_NONE,
 			});
 		});
 
