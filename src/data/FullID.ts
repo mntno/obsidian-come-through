@@ -1,3 +1,5 @@
+import { Env } from "env";
+
 export type CardID = string;
 export type NoteID = string;
 export type IDFilter = (id: FullID) => boolean;
@@ -136,7 +138,7 @@ export class FullID implements FullID {
    * @throws `Error` if {@link cardSide} is not set.
    */
   public get isFrontSide() {
-    console.assert(this.cardSide);
+    Env.assert(this.cardSide !== undefined);
     if (!this.cardSide)
       throw new Error(`Side not specified on id: ${this.toString()}`);
     return this.cardSide === "f" || this.cardSide === "front";

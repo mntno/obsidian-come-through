@@ -1,5 +1,6 @@
-import { Env } from "env";
-import { App, KeymapEventListener, Scope } from "obsidian";
+import { Env } from "#/env";
+import { Bln } from "#/utils/ts";
+import { App, KeymapEventListener, Scope, Vault } from "obsidian";
 
 export const InternalApi = {
 
@@ -40,5 +41,29 @@ export const InternalApi = {
 			Env.log.e("Failed to execute reload command.", e);
 		}
 	},
+
+	getConfig: (vault: Vault, key: "autoFullScreen" | "floatingNavigation" | "showInlineTitle" | "showIndentGuide" | "rightToLeft") => {
+		try {
+			// @ts-expect-error
+			const value = vault.getConfig(key);
+			return Bln.isTrue(value);
+		}
+		catch (e) {
+			Env.log.e("Failed to get config.", e, key);
+			return false;
+		}
+	},
+
+	hideNav: (app: App, hide: boolean) => {
+		try {
+			if (hide)
+				(app as any).mobileNavbar?.hideNavigation(); // eslint-disable-line @typescript-eslint/no-explicit-any
+			else
+				(app as any).mobileNavbar?.restoreNavigation(); // eslint-disable-line @typescript-eslint/no-explicit-any
+		}
+		catch (e) {
+			Env.log.e("Failed to hide navigation.", e);
+		}
+	}
 
 } as const;

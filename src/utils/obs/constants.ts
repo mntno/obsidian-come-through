@@ -1,7 +1,48 @@
+export const HtmlAttribute = {
+	Data: {
+		MODE: "data-mode"
+	}
+} as const;
+
 export const CssClass = {
 
 	wrapperClassForEl: <K extends keyof HTMLElementTagNameMap>(tag: K) => {
 		return "el-" + tag;
+	},
+
+	Body: {
+
+		Setting: {
+			/**
+				* Added when "Full screen" is enabled in settings.
+				* "Automatically hide interface elements while reading."
+				*
+				*/
+			AUTO_FULL_SCREEN: "auto-full-screen",
+
+			/**
+				* Added when "Floating navigation" is enabled in settings.
+				* "Navigation buttons float over the content instead of being anchored."
+				*/
+			IS_FLOATING_NAV: "is-floating-nav",
+		},
+
+		Platform: {
+			IS_PHONE: "is-phone",
+		},
+
+		Interface: {
+			/** Added when the navigation such as the header view is hidden (or about to be hidden once transitioned). */
+			IS_HIDDEN_NAV: "is-hidden-nav",
+			IS_SHOW_INDENT_GUIDE: "show-indentation-guide"
+		}
+	},
+
+	Workspace: {
+		LEAF_CONTENT_MODIFIER: "workspace-leaf-content",
+		Data: {
+			PREVIEW_MODE: "preview"
+		}
 	},
 
 	MarkdownView: {

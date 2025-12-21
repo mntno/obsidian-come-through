@@ -1,3 +1,9 @@
+export class TableCreator {
+	public static create(parent: HTMLElement): TableSectionCreator {
+		return new TableSectionCreator(parent.createEl("table"));
+	}
+}
+
 export class TableSectionCreator {
 	public readonly tableEl: HTMLTableElement;
 
@@ -5,22 +11,22 @@ export class TableSectionCreator {
 		this.tableEl = tableEl;
 	}
 
-	public setHeader(cb: (rowCreator: TableRowCreator) => void) {
+	public setHeader(cb?: (rowCreator: TableRowCreator) => void): TableRowCreator {
 		return this.create("thead", cb);
 	}
 
 	/** It is possible to have multiple <tbody> elements in the same table. */
-	public addBody(cb: (rowCreator: TableRowCreator) => void) {
+	public addBody(cb?: (rowCreator: TableRowCreator) => void): TableRowCreator {
 		return this.create("tbody", cb);
 	}
 
-	public setFooter(cb: (rowCreator: TableRowCreator) => void) {
+	public setFooter(cb?: (rowCreator: TableRowCreator) => void): TableRowCreator {
 		return this.create("tfoot", cb);
 	}
 
-	private create(tag: "thead" | "tbody" | "tfoot", cb: (rowCreator: TableRowCreator) => void) {
+	private create(tag: "thead" | "tbody" | "tfoot", cb?: (rowCreator: TableRowCreator) => void) {
 		const r = new TableRowCreator(this.tableEl.createEl(tag), tag === "thead");
-		cb(r);
+		cb?.(r);
 		return r;
 	}
 }

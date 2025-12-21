@@ -107,7 +107,7 @@ export class ReviewItemInfoModal extends BaseModal {
 			.setDesc("The number of review units left in the current review queue.");
 
 		new TableSectionCreator(el.controlEl.createEl("table")).addBody(rowCreator => {
-			entries.forEach(([date, value], index) => {
+			entries.forEach(([date, value], _index) => {
 				let timeString: string;
 				const hours = date.getHours();
 				const minutes = date.getMinutes();
@@ -169,7 +169,7 @@ export class ReviewItemInfoModal extends BaseModal {
 			.setDesc("The number of review units left in the current review queue below the given retrievability.");
 
 		new TableSectionCreator(el.controlEl.createEl("table")).addBody(rowCreator => {
-			entries.forEach(([threshold, value], index) => {
+			entries.forEach(([threshold, value], _index) => {
 				rowCreator.add((col) => {
 					col.add({ text: `Below ${threshold * 100}%:` });
 					col.add({ text: `${Str.NON_BREAKING_SPACE}${value}` });

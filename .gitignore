@@ -18,7 +18,12 @@ data.json
 
 # This plugin
 
+## Files are copied here on `pnpm run build`.
+/dist/
+
+## Sym-linked to the plugin's folder in the dev/test vault. Files are copied here `pnpm run dev`.
+## Git stores symlinks as a special file containing the target path string, not as a directory. So the gitignore rule needs to match a file, not a directory pattern.
+dev-vault
+
 main.js
 styles.css
-
-/dist/

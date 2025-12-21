@@ -1,6 +1,7 @@
 import builtins from "builtin-modules";
 import esbuild from "esbuild";
 import fs from "fs";
+import path from "path";
 import process from "process";
 
 const banner =
@@ -11,7 +12,9 @@ if you want to view the source, please visit the github repository of this plugi
 `;
 
 const prod = (process.argv[2] === "production");
-const outdir = prod ? "dist" : ".";
+const outdir = prod ? "dist" : "dev-vault";
+
+fs.copyFileSync("manifest.json", path.join(outdir, "manifest.json"));
 
 const context = await esbuild.context({
 	banner: {
@@ -39,6 +42,7 @@ const context = await esbuild.context({
 		"@lezer/lr",
 		...builtins],
 	format: "cjs",
+	// Runtime of min supported Obsidian version 1.8.2, see manifest.json
 	target: "es2022",
 	logLevel: "info",
 	sourcemap: prod ? false : "inline",
@@ -52,7 +56,6 @@ const context = await esbuild.context({
 
 if (prod) {
 	await context.rebuild();
-	fs.copyFileSync("manifest.json", "dist/manifest.json");
 	process.exit(0);
 } else {
 	await context.watch();

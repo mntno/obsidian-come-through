@@ -1,4 +1,3 @@
-import { Env } from "env";
 import { FsrsSchedulerConfig } from "scheduling/types";
 import { Card, createEmptyCard, default_enable_fuzz, default_enable_short_term, default_learning_steps, default_maximum_interval, default_relearning_steps, default_request_retention, fsrs, FSRS, generatorParameters, Grade, RecordLogItem } from "ts-fsrs";
 
@@ -15,7 +14,6 @@ export class Fsrs {
 	}
 
 	private static createFromConfig(config: FsrsSchedulerConfig) {
-		Env.assert(config);
 
 		const params = generatorParameters({
 			request_retention: default_request_retention,

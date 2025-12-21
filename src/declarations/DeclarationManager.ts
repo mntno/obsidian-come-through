@@ -1,8 +1,12 @@
-import { DataStore } from "data/DataStore";
-import { CardDeclarationAssistant } from "declarations/CardDeclaration";
-import { DeckableDeclarable, Declaration } from "declarations/Declaration";
-import { DeclarationRenderChild } from "renderings/declarations/DeclarationRenderChild";
-import { DeckModal } from "modals/DeckModal";
+import { DataStore } from "#/data/DataStore";
+import { DeckID } from "#/data/FullID";
+import { CollectionableAssistant, DeckableDeclarable } from "#/declarations/Collectionable";
+import { DeclarationConstants } from "#/declarations/constants";
+import { DeclarationCodec } from "#/declarations/DeclarationCodec";
+import { Env } from "#/env";
+import { DeckModal } from "#/modals/DeckModal";
+import { DeclarationRenderChild } from "#/renderings/declarations/DeclarationRenderChild";
+import { HtmlTag } from "#/utils/dom/constants";
 import { App, MarkdownPostProcessorContext, MarkdownSectionInformation, TFile, Vault } from "obsidian";
 
 /**
@@ -13,7 +17,7 @@ import { App, MarkdownPostProcessorContext, MarkdownSectionInformation, TFile, V
 export class DeclarationManager {
 
 	public static get supportedCodeBlockLanguages() {
-		return Declaration.supportedCodeBlockLanguages;
+		return DeclarationConstants.CodeBlock.LANGUAGES;
 	}
 
 	public static async processCodeBlock(
@@ -24,7 +28,8 @@ export class DeclarationManager {
 		data: DataStore) {
 
 		const renderer = new DeclarationRenderChild(el, source, {
-			getAllDecks: () => data.getAllDecks()
+			getAllDecks: () => data.getAllDecks(),
+			getDeck: (id: DeckID) => data.getDeck(id),
 		});
 		ctx.addChild(renderer); // The MarkdownPostProcessorContext manage unload, e.g., when file is closed.
 
@@ -36,44 +41,49 @@ export class DeclarationManager {
 				app.vault,
 				file,
 				() => ctx.getSectionInfo(el),
-				Declaration.toString(changedDeclaration)
+				DeclarationCodec.toYaml(changedDeclaration)
 			);
 		}
 
 		renderer.render((declaration, type, deckSelectEl) => {
 
 			const file = app.vault.getFileByPath(ctx.sourcePath);
-			console.assert(file);
+			Env.assert(file !== null);
 			if (!file)
 				return;
 
-			if (type === "deckAdded") {
-				DeckModal.add(app, data, async (addedDeck) => {
+			switch (type) {
+				case "deckAdded": {
+					DeckModal.add(app, data, async (addedDeck) => {
 
-					// Add a new option for the created deck
-					deckSelectEl.createEl("option", {
-						text: addedDeck.data.n,
-						value: addedDeck.id,
-					}, (el) => {
-						el.selected = true;
+						// Add a new option for the created deck
+						deckSelectEl.createEl(HtmlTag.SELECT.OPTION.NAME, {
+							text: addedDeck.data.n,
+							value: addedDeck.id,
+						}, (el) => {
+							HtmlTag.SELECT.OPTION.select(el);
+						});
+
+						handleChangedDeclaration(
+							CollectionableAssistant.copyWithDeck(declaration, addedDeck.id),
+							file
+						).catch(console.error);
 					});
 
+					break;
+				}
+				case "deckChanged": {
+					const selectedDeckID = HtmlTag.SELECT.OPTION.isNone(deckSelectEl.value) ? null : deckSelectEl.value;
+					if (selectedDeckID === declaration.deckID)
+						return;
+
 					handleChangedDeclaration(
-						CardDeclarationAssistant.copyWithDeck(declaration, addedDeck.id),
+						CollectionableAssistant.copyWithDeck(declaration, selectedDeckID),
 						file
 					).catch(console.error);
-				});
-			}
-			else if (type === "deckChanged") {
 
-				const selectedDeckID = deckSelectEl.value ? deckSelectEl.value : null;
-				if (selectedDeckID === declaration.deckID)
-					return;
-
-				handleChangedDeclaration(
-					CardDeclarationAssistant.copyWithDeck(declaration, selectedDeckID),
-					file
-				).catch(console.error);
+					break;
+				}
 			}
 		});
 	}

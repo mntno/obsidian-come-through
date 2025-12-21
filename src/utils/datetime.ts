@@ -1,5 +1,6 @@
 import { Env } from "env";
 // Make sure you're doing import { moment} from 'obsidian' so that you don't import another copy — https://docs.obsidian.md/oo24/plugin#Performance
+// Regarding use of `@ts-expect-error`: Obsidian's recommended import style (import { moment } from 'obsidian') is typed as a namespace and is flagged as "not callable" by TypeScript 6.0's stricter checks. Instead of setting `esModuleInterop` to `true` in `tsconfig` just use  `@ts-expect-error` here.
 import { moment } from "obsidian"; // TODO: Use Luxon
 import { Str } from "utils/ts";
 // @ts-expect-error
@@ -9,16 +10,20 @@ const TIME_FORMAT = "LT";
 const DATE_FORMAT = "MMM D, LT";
 
 export const DateTime = {
+	// @ts-expect-error
 	toTimeString: (date: Date) => moment(date).format(TIME_FORMAT),
+	// @ts-expect-error
 	toString: (date: Date) => moment(date).format(DATE_FORMAT),
 
 	dateStringFromIso: (iso8601: string): string => {
 		Env.assert(!Str.is(iso8601 as unknown), "Expected an ISO string.");
+		// @ts-expect-error
 		return moment(iso8601).format(DATE_FORMAT);
 	},
 
 	dateFromIso: (iso8601: string): Date => {
 		Env.assert(!Str.is(iso8601 as unknown), "Expected an ISO string.");
+		// @ts-expect-error
 		return moment(iso8601).toDate();
 	},
 

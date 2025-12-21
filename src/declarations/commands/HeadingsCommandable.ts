@@ -1,47 +1,79 @@
-import { CommandableDeclarable } from "declarations/CommandDeclaration";
-import { CommandDeclarationParser } from "declarations/CommandDeclarationParser";
+import { CommandableAssistant, CommandableDeclarable } from "#/declarations/Commandable";
+import { CommandDeclarationParser } from "#/declarations/CommandDeclarationParser";
+import { NumberDeclarableProperty, OptionalNullableNumberDeclarableProperty } from "#/declarations/Declarable";
+import { UnexpectedUndefinedError } from "#/utils/errors";
+import { LocalStrictKeys, Obj } from "#/utils/ts";
 import { CacheItem, HeadingCache } from "obsidian";
-import { isNumber } from "TypeAssistant";
-import { UnexpectedUndefinedError } from "utils/errors";
 
 /**
-* @abstract
-*/
-export interface HeadingsCommandableDeclarable extends CommandableDeclarable {
-	level: number;
+	* A command declaration that uses headings as dividers.
+	* @abstract
+	*/
+export interface HeadingsCommandableDeclarable extends DefaultableHeadingsCommandableDeclarable {
+	level: NumberDeclarableProperty;
 }
 
-export abstract class HeadingsCommandableAssistant {
+export interface DefaultableHeadingsCommandableDeclarable extends CommandableDeclarable {
+	level: OptionalNullableNumberDeclarableProperty;
+}
 
-	public static conforms<T extends HeadingsCommandableDeclarable>(command: CommandableDeclarable): command is T {
-		return Object.hasOwn(command, "level");
+type PropertyNames = LocalStrictKeys<DefaultableHeadingsCommandableDeclarable, CommandableDeclarable>;
+
+
+export abstract class HeadingsCommandableAssistant extends CommandableAssistant {
+
+	public static override is(value: unknown): value is HeadingsCommandableDeclarable {
+		if (!This.Defaultable.is(value))
+			return false;
+
+		if (!This.PropertyType.isNum(Obj.getKey<DefaultableHeadingsCommandableDeclarable, PropertyNames>(value, "level")))
+			return false;
+
+		return true;
 	}
 
-	/**
-	 * @param command
-	 * @returns `true` if the values of properties were valid or undefined, in which case default values were set.
-	 */
-	public static isValid(command: HeadingsCommandableDeclarable) {
-		return (
-			this.isLevelValid(command)
-		);
+	public static override isValid(declarable: HeadingsCommandableDeclarable) {
+		if (!This.Defaultable.isValid(declarable))
+			return false;
+
+		if (declarable.level < 1)
+			return false;
+
+		return true;
 	}
 
-	private static isLevelValid(command: HeadingsCommandableDeclarable) {
-		if (isNumber(command.level)) {
-			return command.level >= 1;
-		}
+	public static readonly Defaultable = {
 
-		// If `level` is not set, default to 1; if less than one it's invalid.
-		if (command.level === undefined || command.level === null) {
-			command.level = 1;
+		is(value: unknown): value is DefaultableHeadingsCommandableDeclarable {
+			if (!CommandableAssistant.is(value))
+				return false;
+
+			// Add optional properties with default values.
+			if (!Obj.hasKey<DefaultableHeadingsCommandableDeclarable, PropertyNames>(value, "level"))
+				Obj.setKey<DefaultableHeadingsCommandableDeclarable, PropertyNames>(value, "level", This.PropertyValue.OPTIONAL_NOT_ADDED);
+
+			if (!This.PropertyType.isOptionalNullableNumber(Obj.getKey<DefaultableHeadingsCommandableDeclarable, PropertyNames>(value, "level")))
+				return false;
+
+			return true;
+		},
+
+		isValid(declarable: HeadingsCommandableDeclarable) {
+			if (!CommandableAssistant.isValid(declarable))
+				return false;
+
+			if (!This.PropertyEq.optionalNullOrNumber(declarable.level))
+				return false;
+
 			return true;
 		}
-
-		return false;
 	}
 }
+const This = HeadingsCommandableAssistant;
 
+/**
+	* @abstract
+	*/
 export abstract class HeadingsDeclarationParser<T extends HeadingsCommandableDeclarable>
 	extends CommandDeclarationParser<T> {
 
@@ -66,7 +98,7 @@ export abstract class HeadingsDeclarationParser<T extends HeadingsCommandableDec
 		for (let nextIndex = index + 1; nextIndex < delimiters.length; nextIndex++) {
 			const nextDelimiter = delimiters[nextIndex];
 			if (nextDelimiter === undefined)
-					throw new UnexpectedUndefinedError();
+				throw new UnexpectedUndefinedError();
 			if (HeadingsDeclarationParser.isHeadingCache(nextDelimiter) && headingLevel >= nextDelimiter.level)
 				return nextDelimiter;
 		}

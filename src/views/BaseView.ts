@@ -1,19 +1,23 @@
-import { DataStore, DataStoreRoot } from "data/DataStore";
-import { Env } from "env";
+import { CssClass } from "#/constants";
+import { DataStore, DataStoreRoot } from "#/data/DataStore";
+import { Env } from "#/env";
+import { ContentRenderer, createRenderConfig } from "#/renderings/content/ContentRenderer";
+import { PluginSettings, SettingsChanged, SettingsManager } from "#/Settings";
+import { Icon } from "#/ui/constants";
+import { Doc, El } from "#/utils/dom/dom";
+import { ElementCreator } from "#/utils/ElementCreator";
+import { InteractionAssistant } from "#/utils/obs/InteractionAssistant";
+import { ViewAssistant } from "#/utils/obs/ViewAssistant";
+import { Bln } from "#/utils/ts";
 import { IconName, ItemView, ViewStateResult, WorkspaceLeaf } from "obsidian";
-import { ContentRenderer, createRenderConfig } from "renderings/content/ContentRenderer";
-import { PluginSettings, SettingsChanged, SettingsManager } from "Settings";
-import { Icon } from "ui/constants";
-import { ElementCreator } from "utils/ElementCreator";
-import { getDoc } from "utils/obs/dom";
-import { ViewAssistant } from "utils/obs/ViewAssistant";
-import { CssClass } from "views/constants";
 
 export type BaseViewOptionalParameters = {
 	data?: DataStore;
 };
 
 export interface BaseViewState {
+	/** {@link BaseView.prototype.setState} only forwards the state to subclasses once unless this is set. Therefore, set this to render based on a new state in an already opened view. Use {@linkcode BaseView.withDefaultViewState}. */
+	forceUpdate?: boolean;
 	[key: string]: unknown;
 }
 
@@ -21,10 +25,21 @@ export interface BaseViewEphemeralState {
 	[key: string]: unknown;
 }
 
+export interface BaseViewScrollToOptions extends ScrollToOptions { // eslint-disable-line @typescript-eslint/no-empty-object-type
+}
+
 export abstract class BaseView<State extends BaseViewState> extends ItemView {
+
+	protected static withDefaultViewState<T extends BaseViewState>(state: T): T {
+		return {
+			...state,
+			forceUpdate: true
+		};
+	}
 
 	protected readonly settingsManager: SettingsManager;
 	protected readonly contentRenderer: ContentRenderer;
+	protected readonly interactionAssistant: InteractionAssistant;
 
 	private readonly options?: BaseViewOptionalParameters;
 	private readonly viewAssistant: ViewAssistant;
@@ -38,6 +53,7 @@ export abstract class BaseView<State extends BaseViewState> extends ItemView {
 		this.options = options;
 
 		this.viewAssistant = new ViewAssistant();
+		this.interactionAssistant = new InteractionAssistant(this.app, this, this.viewAssistant);
 		this.contentRenderer = new ContentRenderer(this.app, createRenderConfig(settingsManager.settings));
 		this.addChild(this.contentRenderer);
 	}
@@ -67,8 +83,10 @@ export abstract class BaseView<State extends BaseViewState> extends ItemView {
 		}
 
 		this.contentEl.empty();
-		this.containerEl.addClass(CssClass.WORKSPACE_LEAF_CONTENT_MODIFIER);
 		this.viewAssistant.init(this);
+		this.interactionAssistant.init(Doc.get(this.contentEl));
+
+		El.Cls.add(this.viewAssistant.workspaceLeafEl, CssClass.View.WORKSPACE_LEAF_CONTENT_MODIFIER);
 	}
 
 	protected override async onClose(): Promise<void> {
@@ -82,8 +100,10 @@ export abstract class BaseView<State extends BaseViewState> extends ItemView {
 
 		this.contentRenderer.unload(); // Will also be unloaded when this view unloads.
 		this.domFacade = null;
+
+		El.Cls.remove(this.viewAssistant.workspaceLeafEl, CssClass.View.WORKSPACE_LEAF_CONTENT_MODIFIER);
+		this.interactionAssistant.deinit();
 		this.viewAssistant.deinit();
-		this.containerEl.removeClass(CssClass.WORKSPACE_LEAF_CONTENT_MODIFIER);
 	}
 
 	public override onResize(): void {
@@ -98,13 +118,21 @@ export abstract class BaseView<State extends BaseViewState> extends ItemView {
 		Env.log.d("BaseView:setState:", this.didSetState, state);
 		await super.setState(state, result);
 
-		if (!this.didSetState) {
-			this.onSetState(state as State, result);
-			this.didSetState = true;
+		const setState = state as State | null | undefined;
+		Env.assert(setState !== undefined && setState !== null);
+		if (setState === undefined || setState === null)
+			return;
 
-			//this.contentRenderer.recycle();
-			Env.log.view("BaseView:setState: refreshing view because state was set");
+		const proceed = async () => {
+			this.onSetState(setState, result);
 			await this.render();
+		};
+
+		if (!this.didSetState) {
+			this.didSetState = true;
+			await proceed();
+		} else if (Bln.isTrue(setState.forceUpdate)) {
+			await proceed();
 		}
 	}
 	/** Subclasses should store and manage their own {@link BaseViewState}. {@link onSetState} is only called once per instantiation of this class. */
@@ -182,22 +210,24 @@ export abstract class BaseView<State extends BaseViewState> extends ItemView {
 	protected abstract onSetState(state: State, result: ViewStateResult): void;
 	/** Supply the state to the system. */
 	protected abstract onGetState(): State;
-	protected onSetEphemeralState(state: unknown): void { };
+	protected onSetEphemeralState(state: unknown): void { }; // eslint-disable-line @typescript-eslint/no-unused-vars
 	protected onGetEphemeralState(): Record<string, unknown> { return {}; };
 	protected abstract onRender(): Promise<void>;
 
-	protected onDataChanged(data: DataStoreRoot, out: { skipRender: boolean }): void { };
-	protected onSettingsChanged(settings: PluginSettings, isExternal: boolean, out: { skipRender: boolean }): void { };
+	protected onDataChanged(data: DataStoreRoot, out: { skipRender: boolean }): void { }; // eslint-disable-line @typescript-eslint/no-unused-vars
+	protected onSettingsChanged(settings: PluginSettings, isExternal: boolean, out: { skipRender: boolean }): void { }; // eslint-disable-line @typescript-eslint/no-unused-vars
 
 	protected get scrollPosition(): { top: number, left: number } {
-		return this.viewAssistant.scrollContainer
-			? { top: this.viewAssistant.scrollContainer.scrollTop, left: this.viewAssistant.scrollContainer.scrollLeft }
-			: { top: 0, left: 0 };
+		return {
+			top: this.viewAssistant.scrollContainer.scrollTop, left: this.viewAssistant.scrollContainer.scrollLeft
+		};
 	}
 
-	protected setScrollPosition(options: ScrollToOptions) {
+	/** The call is asynchronous, i.e., the scroll position is not updated immediately. */
+	protected setScrollPosition(options: BaseViewScrollToOptions) {
 		Env.log.d("BaseView:setScrollPosition", options);
-		this.viewAssistant.scrollContainer?.scrollTo(options)
+		this.interactionAssistant.nextScrollIsProgrammatic();
+		this.viewAssistant.scrollContainer.scrollTo(options)
 	}
 
 	protected saveState() {
@@ -212,7 +242,7 @@ export abstract class BaseView<State extends BaseViewState> extends ItemView {
 			this.domFacade = {
 				contentEl: contentEl,
 				create: new ElementCreator(contentEl),
-				doc: getDoc(contentEl),
+				doc: Doc.get(contentEl),
 			}
 		}
 		return this.domFacade;

@@ -1,11 +1,11 @@
-import { CardDeclarationAssistant, IDScope } from "declarations/CardDeclaration";
-import { Declaration } from "declarations/Declaration";
-import { DeclarationParser } from "declarations/DeclarationParser";
-import { FullSectionRange, SectionRange } from "utils/obs/FileParser";
-import { CardID, FullID, NoteID } from "data/FullID";
+import { CardID, FullID, NoteID } from "#/data/FullID";
+import { DeclarationConstants } from "#/declarations/constants";
+import { DeclarationParser } from "#/declarations/DeclarationParser";
+import { IDScope } from "#/declarations/ExplicitDeclaration";
+import { asNoteID, fullIDFromDeclaration } from "#/TypeAssistant";
+import { UnexpectedUndefinedError } from "#/utils/errors";
+import { FullSectionRange, SectionRange } from "#/utils/obs/FileParser";
 import { App, CachedMetadata, HeadingCache, SectionCache, TFile } from "obsidian";
-import { asNoteID, fullIDFromDeclaration } from "TypeAssistant";
-import { UnexpectedUndefinedError } from "utils/errors";
 
 /**
 	* The result of attempting to retrieve the content of a particular {@link FullID}.
@@ -127,14 +127,16 @@ export class ContentParser extends DeclarationParser {
 		const predicate: PopulationPredicate = {
 			iterationFilter: (idContentInfo) => {
 
-				// For unique ids. If also filtering on noteID, then only this file will be looked at,
-				// while the other side is in another file and thus won't be found.
-				if (idContentInfo.scope == IDScope.UNIQUE)
-					return idContentInfo.id.isCardEqual(id);
+				switch (idContentInfo.scope) {
+					case IDScope.Unique:
+						// For unique ids. If also filtering on noteID, then only this file will be looked at,
+						// while the other side is in another file and thus won't be found.
+						return idContentInfo.id.isCardEqual(id);
 
-				// Should work for file-scoped IDs.
-				if (idContentInfo.scope == IDScope.NOTE)
-					return idContentInfo.id.isEqual(id, true);
+					case IDScope.Note:
+						// Should work for file-scoped IDs.
+						return idContentInfo.id.isEqual(id, true);
+				}
 
 				throw new Error(`Unrecognized ID scope for ID: ${idContentInfo.id}`);
 			},
@@ -142,11 +144,13 @@ export class ContentParser extends DeclarationParser {
 				if (!this.isComplete(maybeParsedCard))
 					return false;
 
-				if (idContentInfo.scope == IDScope.UNIQUE)
-					return maybeParsedCard.frontID.isCardEqual(id);
+				switch (idContentInfo.scope) {
+					case IDScope.Unique:
+						return maybeParsedCard.frontID.isCardEqual(id);
 
-				if (idContentInfo.scope == IDScope.NOTE)
-					return maybeParsedCard.frontID.isEqual(id, true);
+					case IDScope.Note:
+						return maybeParsedCard.frontID.isEqual(id, true);
+				}
 
 				throw new Error(`Unrecognized ID scope for ID: ${idContentInfo.id}`);
 			}
@@ -269,7 +273,7 @@ export class ContentParser extends DeclarationParser {
 
 			cardInfos.push({
 				id: id,
-				scope: IDScope.NOTE,
+				scope: IDScope.Note,
 				contentInfo: {
 					range: {
 						start: currentHeading,
@@ -287,8 +291,8 @@ export class ContentParser extends DeclarationParser {
 
 		// Look for a declaration in the frontmatter
 		if (cache.frontmatter) {
-			for (const key of Declaration.supportedFrontmatterKeys) {
-				const declaration = CardDeclarationAssistant.fromFrontmatter(cache.frontmatter[key]);
+			for (const key of DeclarationConstants.Frontmatter.KEYS) {
+				const declaration = ContentParser.declarationFromFrontmatter(cache.frontmatter[key]);
 				if (declaration) {
 					cardInfos.push({
 						id: fullIDFromDeclaration(declaration, noteID),
@@ -306,7 +310,7 @@ export class ContentParser extends DeclarationParser {
 
 		for (const section of cache.sections ?? []) {
 
-			const declaration = this.getDeclarationFromSection(section, noteID, fileContent);
+			const declaration = ContentParser.getDeclarationFromSection(section, noteID, fileContent);
 			if (!declaration)
 				continue;
 

@@ -1,13 +1,17 @@
-import { HeadingIsFrontAssistant, HeadingIsFrontDeclarable } from "declarations/commands/HeadingIsFront";
-import { DeclarationRenderable, DeclarationRenderAssistant, DeclarationRenderer } from "renderings/declarations/DeclarationRenderable";
+import { HeadingIsFrontAssistant, HeadingIsFrontDeclarable } from "#/declarations/commands/HeadingIsFront";
+import { DeclarationRenderable, DeclarationRenderAssistant, DeclarationRenderer } from "#/renderings/declarations/DeclarationRenderable";
+
+const Assistant = HeadingIsFrontAssistant;
 
 export class HeadingIsFrontRenderer
 	extends DeclarationRenderer<HeadingIsFrontDeclarable>
 	implements DeclarationRenderable {
 
+	public static override canRender = (value: unknown) => Assistant.is(value);
+
 	public render(r: DeclarationRenderAssistant) {
 
-		if (!HeadingIsFrontAssistant.conforms(this.declarable) || !HeadingIsFrontAssistant.isValid(this.declarable)) {
+		if (!HeadingIsFrontAssistant.is(this.declarable) || !HeadingIsFrontAssistant.isValid(this.declarable)) {
 			r.setError();
 			r.setTitle("Invalid heading is front command");
 			r.addParagraph("Please check the entered values.");

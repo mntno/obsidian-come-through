@@ -1,14 +1,14 @@
 import { Platform } from "obsidian";
 
-const isProduction = process.env.NODE_ENV === "production";
+const isProduction = process.env["NODE_ENV"] === "production";
 const isDev = !isProduction;
-const noop = () => {};
 
-const noopLogger = {
-	debug: noop,
-	log: noop,
-	info: noop,
-	warn: noop,
+const noopLogger: Pick<Console, "debug" | "log" | "info" | "warn" | "error"> = {
+  debug: () => {},
+	log: () => { },
+  info: () => {},
+  warn: () => {},
+  error: () => {},
 };
 
 const devLogger = isDev ? console : noopLogger;
@@ -22,7 +22,6 @@ export const Env = {
 	/** Debug/Dev context */
 	dev: isDev ? DevContext : undefined,
 	isDev: isDev,
-	noop: noop,
 
 	/** Always logs */
 	error: console.error,
@@ -53,11 +52,12 @@ export const Env = {
 		e: console.error,
 
 		/** Debug log for content processors. See {@link ContentRendererProcessor}. */
-		proc: devLogger.info,  //  devLogger.info : noopLogger.debug,
+		proc: noopLogger.info,
 
 		/** Debug log for views. */
-		view: devLogger.info, //  devLogger.info : noopLogger.debug,
+		view: noopLogger.info,
 
+		data: noopLogger.info,
 	},
 
 	perf: {
@@ -78,12 +78,13 @@ export const Env = {
 	},
 
 	/** If running in mobile app that has very limited screen space. */
-	isPhone: Platform.isPhone,
+	get isPhone(): boolean {
+		return Platform.isPhone;
+	},
+
 	/** If running in mobile app that has sufficiently large screen space. */
-	isTablet: Platform.isTablet,
+	get isTablet(): boolean {
+		return Platform.isTablet;
+	},
 
-
-	str: {
-		EMPTY: "",
-	} as const
 } as const;

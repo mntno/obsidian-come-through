@@ -1,4 +1,5 @@
 import { App, CacheItem, HeadingCache, Pos, SectionCache, TFile } from "obsidian";
+import { UNARY_UNION_SUPPRESS } from "#/utils/ts";
 
 interface FileParserErrorOptions extends ErrorOptions {
 	type: "file cache unavailable";
@@ -24,6 +25,11 @@ export class FileParserError extends Error {
 	}
 }
 
+export type OffsetRange = {
+    start: number;
+    end: number;
+};
+
 /** A part of a file's content delimited by two {@link SectionCache} */
 export type SectionRange = {
 	/** If `null`, starts at the beginning.*/
@@ -36,7 +42,7 @@ export type CodeBlockInfo = {
 	/** May be an empty string if language is not specified. */
 	language: string;
 	/** The location of the content relative to the first tick of the block. */
-	location: { start: number, end: number};
+	location: OffsetRange;
 	content: string;
 }
 
@@ -63,10 +69,13 @@ const FrontmatterSection: ExternalSectionCache = {
 * Sections of the file that are not part of the actual Markdown.
 */
 interface ExternalSectionCache extends SectionCache {
-	externalType: "frontmatter" //| "backmatter"
+	externalType: "frontmatter" | typeof UNARY_UNION_SUPPRESS //| "backmatter"
 }
 
-/** Provides a set of common helpers for interpreting the structure and metadata of markdown files. */
+/**
+	* Provides a set of common helpers for interpreting the structure and metadata of markdown files.
+	* @abstract
+	*/
 export abstract class FileParser {
 
 	protected static readonly SECTION_TYPE_HEADING = "heading";
@@ -125,7 +134,6 @@ export abstract class FileParser {
 	}
 
 	/**
-	 * @todo This method does not support code blocks that start with four characters.
 	 * @param source The code block including the three ticks at the beginning and end. See {@link extractContentFromSection}.
 	 * @returns `null` is {@link source} is not a code block.
 	 */

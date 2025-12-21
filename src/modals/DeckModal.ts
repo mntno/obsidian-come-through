@@ -1,116 +1,132 @@
-import { DataStore, DeckEditor, DeckIDDataTuple } from "data/DataStore";
-import { DeckID } from "data/FullID";
-import { BaseModal } from "modals/BaseModal";
+import { DataStore, DeckEditor, DeckIDDataTuple } from "#/data/DataStore";
+import { DeckID } from "#/data/FullID";
+import { BaseModal } from "#/modals/BaseModal";
+import { HtmlTag } from "#/utils/dom/constants";
+import { Str } from "#/utils/ts";
 import { App, ButtonComponent, Setting } from "obsidian";
-import { UIAssistant } from "ui/UIAssistant";
 
+export type OnSubmitCallback = (deck: DeckIDDataTuple) => void;
 
 export class DeckModal extends BaseModal {
 
-  private nameOfDeck: string = "";
-  private parentDeckID: DeckID | null;
-  private createButton: ButtonComponent;
-  private result?: DeckIDDataTuple;
+	private nameOfDeck: string = Str.EMPTY;
+	private parentDeckID: DeckID | null = null;
+	private createButton!: ButtonComponent;
+	private result: DeckIDDataTuple | undefined;
 
-  public static add(app: App,
-    data: DataStore,
-    onAdded: (deck: DeckIDDataTuple) => void) {
-      new DeckModal(app, data, onAdded).open();
-  }
+	private readonly data: DataStore;
+	private readonly onSubmit: OnSubmitCallback | undefined;
+	private readonly idToEdit: DeckID | undefined;
 
-  constructor(
-    readonly app: App,
-    private readonly data: DataStore,
-    private readonly onSubmit: (deck: DeckIDDataTuple) => void,
-    private readonly idToEdit?: DeckID) {
-    super(app, { fullscreenOnLimitedScreenSpace: true });
+	public static add(
+		app: App,
+		data: DataStore,
+		onAdded?: OnSubmitCallback) {
+		new DeckModal(app, data, onAdded).open();
+	}
 
-    if (idToEdit) {
-      const deckToEdit = data.getDeck(idToEdit, true)!;
-      this.nameOfDeck = deckToEdit.n;
-      this.parentDeckID = DeckEditor.parent(deckToEdit);
-      this.setTitle("Edit deck");
-    }
-    else {
-      this.setTitle("Create a new deck");
-    }
+	public static edit(
+		app: App,
+		data: DataStore,
+		id: DeckID,
+		onSubmit?: OnSubmitCallback) {
+		new DeckModal(app, data, onSubmit, id).open();
+	}
 
-    new Setting(this.contentEl)
-      .setName("Name")
-      .addText((component) => {
-        component.setValue(this.nameOfDeck);
-        component.onChange((text) => {
-          this.nameOfDeck = text;
-          this.createButton.setDisabled(this.nameOfDeck.trim().length == 0);
-        });
-      });
+	private constructor(
+		app: App,
+		data: DataStore,
+		onSubmit?: OnSubmitCallback,
+		idToEdit?: DeckID
+	) {
+		super(app, { fullscreenOnLimitedScreenSpace: true });
+		this.data = data;
+		this.onSubmit = onSubmit;
+		this.idToEdit = idToEdit;
 
-    new Setting(this.contentEl)
-      .setName("Parent deck")
-      .setDesc(idToEdit ? "" : "To make this deck a subdeck, choose a parent deck.")
-      .addDropdown((component) => {
+		if (idToEdit) {
+			const deckToEdit = data.getDeck(idToEdit, true)!;
+			this.nameOfDeck = deckToEdit.n;
+			this.parentDeckID = DeckEditor.parent(deckToEdit);
+			this.setTitle("Edit deck");
+		}
+		else {
+			this.setTitle("Create a new deck");
+		}
 
-        component.addOption(UIAssistant.DECK_ID_NONE, "None");
-        for (const deck of this.data.getAllDecks().filter(d => d.id !== this.idToEdit))
-            component.addOption(deck.id, deck.data.n);
-        component.setValue(this.parentDeckID ?? UIAssistant.DECK_ID_NONE);
+		new Setting(this.contentEl)
+			.setName("Name")
+			.addText((component) => {
+				component.setValue(this.nameOfDeck);
+				component.onChange((text) => {
+					this.nameOfDeck = text;
+					this.createButton.setDisabled(this.nameOfDeck.trim().length == 0);
+				});
+			});
 
-        component.onChange((value) => {
-          this.parentDeckID = value === UIAssistant.DECK_ID_NONE ? null : value;
-        });
-      });
+		new Setting(this.contentEl)
+			.setName("Parent deck")
+			.setDesc(idToEdit ? "" : "To make this deck a subdeck, choose a parent deck.")
+			.addDropdown((component) => {
 
-    new Setting(this.contentEl)
-      .addButton((button) => {
-        this.createButton = button;
-        button.setDisabled(this.nameOfDeck.trim().length == 0);
-        button.setCta()
-        button.setButtonText(this.idToEdit ? "Save" : "Create new deck");
-        button.onClick(async () => {
-          button.setDisabled(true);
-          await this.submit();
-          this.close();
-        });
-      })
-      .addButton((button) => {
-        button.setButtonText("Cancel");
-        button.onClick(() => {
-          this.close();
-        });
-      });
-  }
+				component.addOption(HtmlTag.SELECT.OPTION.Values.NONE, "None");
+				for (const deck of this.data.getAllDecks().filter(d => d.id !== this.idToEdit))
+					component.addOption(deck.id, deck.data.n);
+				component.setValue(this.parentDeckID ?? HtmlTag.SELECT.OPTION.Values.NONE);
 
-  // onOpen(): void {
-  //   super.onOpen();
-  // }
+				component.onChange((value) => {
+					this.parentDeckID = HtmlTag.SELECT.OPTION.isNone(value) ? null : value;
+				});
+			});
 
-  onClose(): void {
-    super.onClose();
+		new Setting(this.contentEl)
+			.addButton((button) => {
+				this.createButton = button;
+				button.setDisabled(this.nameOfDeck.trim().length == 0);
+				button.setCta()
+				button.setButtonText(Str.isNonEmpty(this.idToEdit) ? "Save" : "Create new deck");
+				button.onClick(async () => {
+					button.setDisabled(true);
+					await this.submit();
+					this.close();
+				});
+			})
+			.addButton((button) => {
+				button.setButtonText("Cancel");
+				button.onClick(() => {
+					this.close();
+				});
+			});
+	}
 
-    if (this.result) {
-      const result = this.result;
-      setTimeout(() => this.onSubmit(result), 1);
-    }
-  }
+	public override onClose(): void {
+		super.onClose();
 
-  private async submit() {
-    const cb = (editor: DeckEditor) => {
-      editor.setName(this.nameOfDeck);
-      editor.setParent(this.parentDeckID);
-      return true;
-    };
+		if (this.onSubmit !== undefined && this.result !== undefined) {
+			const result = this.result;
+			const onSubmit = this.onSubmit;
+			setTimeout(() => onSubmit(result), 1);
+		}
+	}
 
-    let deckID: DeckID;
-    if (this.idToEdit) {
-      deckID = this.idToEdit;
-      this.data.editDeck(this.idToEdit, cb);
-    }
-    else {
-      deckID = this.data.createDeck(cb).id;
-    }
-    await this.data.save();
+	private async submit() {
+		const cb = (editor: DeckEditor) => {
+			editor.setName(this.nameOfDeck);
+			editor.setParent(this.parentDeckID);
+			return true;
+		};
 
-    const deck = this.data.getDeck(deckID, true);
-    this.result = { id: deckID, data: deck! };
-  }
+		let deckID: DeckID;
+		if (this.idToEdit !== undefined) {
+			deckID = this.idToEdit;
+			const edited = this.data.editDeck(this.idToEdit, cb);
+			if (edited !== null)
+				this.result = { id: deckID, data: edited };
+		}
+		else {
+			const created = this.data.createDeck(cb);
+			this.result = { id: created.id, data: created.data };
+		}
+		await this.data.save();
+	}
 }

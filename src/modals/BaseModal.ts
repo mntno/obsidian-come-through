@@ -1,6 +1,7 @@
-import { Env } from "env";
+import { CssClass } from "#/constants";
+import { Env } from "#/env";
+import { CssClass as ObsCssClass } from "#/utils/obs/constants";
 import { App, Modal, Setting } from "obsidian";
-import { CssClass } from "utils/obs/constants";
 
 /**
  * - Adds a plugin specific class to all modals for styling purposes.
@@ -29,15 +30,15 @@ export class BaseModal extends Modal {
 		// "Show debug info" modal has this class which makes the height 100% on mobile, i.e. fullscreen.
 		// If modal contains a lot of content and therefore expands in height, it will never fill the entire screen. So in those cases, it's better to force fullscreen.
 		if (options?.fullscreenOnLimitedScreenSpace && Env.isPhone)
-			this.modalEl.addClass(CssClass.Modal.LG);
+			this.modalEl.addClass(ObsCssClass.Modal.LG);
 
-		this.contentEl.addClass("come-through-modal-content");
+		this.contentEl.addClass(CssClass.Modal.CONTENT);
 	}
 
 	protected createSetting(name: string, o?: { styleControlElAsDesc?: boolean, isHeading?: boolean }) {
 		const s = new Setting(this.contentEl).setName(name)
 		if (o?.styleControlElAsDesc)
-			s.controlEl.addClass(CssClass.Setting.Item.DESC);
+			s.controlEl.addClass(ObsCssClass.Setting.Item.DESC);
 		if (o?.isHeading)
 			s.setHeading();
 		return s;
@@ -46,9 +47,9 @@ export class BaseModal extends Modal {
 	/** Using this you get better bottom margins on mobile than adding buttons on a `Setting`. */
 	protected getButtonContainer() {
 		// Try to find existing button container, or create one if it doesn't exist
-		let buttonContainer = this.modalEl.querySelector<HTMLElement>("." + CssClass.Modal.BUTTON_CONTAINER);
+		let buttonContainer = this.modalEl.querySelector<HTMLElement>("." + ObsCssClass.Modal.BUTTON_CONTAINER);
 		if (buttonContainer === null)
-			buttonContainer = this.contentEl.createDiv(CssClass.Modal.BUTTON_CONTAINER);
+			buttonContainer = this.contentEl.createDiv(ObsCssClass.Modal.BUTTON_CONTAINER);
 		return buttonContainer;
 	}
 
@@ -58,7 +59,7 @@ export class BaseModal extends Modal {
 
 		this.getButtonContainer().createEl("button", {
 			text: "Done",
-			cls: CssClass.Modal.CANCEL,
+			cls: ObsCssClass.Modal.CANCEL,
 		}, (button => {
 			button.addEventListener("click", () => this.close());
 		}))

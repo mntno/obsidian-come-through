@@ -1,9 +1,17 @@
-import { CardDeclaration, IDScope } from "declarations/CardDeclaration";
-import { CommandableDeclarable } from "declarations/CommandDeclaration";
-import { FileParser, SectionRange } from "utils/obs/FileParser";
+import { CardDeclaration } from "declarations/CardDeclaration";
+import { CommandableDeclarable } from "declarations/Commandable";
+import { IDScope } from "declarations/ExplicitDeclaration";
 import { CacheItem } from "obsidian";
+import { FileParser, SectionRange } from "utils/obs/FileParser";
 
 export interface CommandDeclarationParsable {
+	/**
+		* Creates a {@link CardDeclaration} and adds it to {@link generatedDeclarations}.
+		* @param sectionLevel
+		* @param inBetweenDelimiter
+		* @param index
+		* @param delimiters
+		*/
 	parse(sectionLevel: number, inBetweenDelimiter: CacheItem, index: number, delimiters: CacheItem[]): void;
 	generatedDeclarations: GeneratedContentDeclaration[];
 }
@@ -16,9 +24,25 @@ export type GeneratedContentDeclaration = {
 	range: SectionRange,
 };
 
+/**
+	* Provides common functionality for {@link CommandableDeclarable} parsers.
+	* @abstract
+	*/
 export abstract class CommandDeclarationParser<T extends CommandableDeclarable>
 	extends FileParser
 	implements CommandDeclarationParsable {
+
+	public static readonly Factory = {
+		createEntry: <T extends CommandableDeclarable>(
+			names: readonly string[],
+			ParserClass: {
+				new(commandable: T): CommandDeclarationParsable;
+				tryCreate(value: CommandableDeclarable): CommandDeclarationParsable | null;
+			}) => ({
+				names,
+				create: (d: CommandableDeclarable) => ParserClass.tryCreate(d)
+			})
+	};
 
 	abstract parse(sectionLevel: number, inBetweenDelimiter: CacheItem, index: number, delimiters: CacheItem[]): void;
 	public generatedDeclarations: GeneratedContentDeclaration[] = [];
@@ -30,7 +54,12 @@ export abstract class CommandDeclarationParser<T extends CommandableDeclarable>
 		this.commandable = commandable;
 	}
 
-	protected generateDeclaration(id: string, isFront: boolean, startDelimiter: CacheItem | null, endDelimiter: CacheItem | null, scope: IDScope = IDScope.NOTE) {
+	protected generateDeclaration(
+		id: string,
+		isFront: boolean,
+		startDelimiter: CacheItem | null,
+		endDelimiter: CacheItem | null,
+		scope: IDScope = IDScope.Note) {
 		this.generatedDeclarations.push({
 			declaration: new CardDeclaration(
 				id,
@@ -59,4 +88,11 @@ export abstract class CommandDeclarationParser<T extends CommandableDeclarable>
 	protected get lastID() {
 		return this.lastDeclaration().declaration.id;
 	}
+
+	protected tryParseUniqueID(text: string) {
+		const match = this.FULL_ID_REGEX.exec(text);
+		const result = match?.[1];
+		return result !== undefined ? result.toLowerCase() : null;
+	}
+	protected readonly FULL_ID_REGEX = /@([^\s]+)/i;
 }

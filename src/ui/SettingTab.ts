@@ -29,7 +29,7 @@ export class SettingTab extends PluginSettingTab {
 			.addText((component) => {
 				component.setValue(settings.uiPrefix);
 				component.onChange(async (value) => {
-					settings.uiPrefix = value;
+					settings.uiPrefix = value.trim();
 					await this.settingsManager.save();
 				});
 			});
@@ -46,7 +46,7 @@ export class SettingTab extends PluginSettingTab {
 			});
 	}
 
-	public hide(): void {
+	public override hide(): void {
 		this.settingsManager.unregisterOnChangedCallback(this.onChangedCallback);
 	}
 }

@@ -6,7 +6,7 @@ export class VideoProcessor extends ContentRendererProcessor implements ContentR
 		param.el.querySelectorAll("video").forEach(el => this.handleVideo(param, el));
 	}
 
-	private handleVideo(param: PostProcessorParameter, el: HTMLVideoElement) {
+	private handleVideo(_param: PostProcessorParameter, el: HTMLVideoElement) {
 		this.setDefaults(el);
 	}
 

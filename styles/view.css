@@ -14,3 +14,17 @@ div.come-through-workspace-leaf-content .markdown-reading-view {
 div.come-through-workspace-leaf-content :lang(th) {
   font-size: 1.25rem;
 }
+
+/* Apr 25, 2026: Obsidian zeroes --view-top-spacing for markdown views via:
+ *
+ *   .workspace-leaf-content[data-type="markdown"] {
+ *     --view-top-spacing: 0;
+ *   }
+ *
+ * Custom views have a different data-type and do not get this automatically.
+ * Without it, double top spacing occurs when "Full screen" or "Floating
+ * navigation" is enabled (Appearance, mobile v1.11.6+).
+ */
+div.come-through-workspace-leaf-content {
+  --view-top-spacing: 0;
+}

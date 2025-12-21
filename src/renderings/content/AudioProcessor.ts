@@ -73,7 +73,7 @@ export class AudioProcessor extends ContentRendererProcessor implements ContentR
 			}
 
 			const match = this.registeredAudioItems.find(p => p.el === audioElThatStartedPlaying) ?? null;
-			Env.assert(match, "Expected to find the element.")
+			Env.assert(match !== null, "Expected to find the element.")
 			this.currentlyPlaying = match;
 		});
 
@@ -89,12 +89,12 @@ export class AudioProcessor extends ContentRendererProcessor implements ContentR
 	/**
 		* - Note: If paused because of {@link HtmlAttribute.MediaElement.Plugin.Data.LoopDelay} it is still considered playing.
 		*/
-	private currentlyPlaying: { el: HTMLAudioElement, controller: TimeLoopController } | null;
+	private currentlyPlaying: { el: HTMLAudioElement, controller: TimeLoopController } | null = null;
 
 	/**
 		* @returns `null` if no source was set.
 		*/
-	private static getPlayerInfo(param: PostProcessorParameter, el: HTMLAudioElement): AudioPlayerInfo | null {
+	private static getPlayerInfo(_param: PostProcessorParameter, el: HTMLAudioElement): AudioPlayerInfo | null {
 		Env.log.proc(`getPlayerInfo`);
 
 		const getSource = () => {
@@ -113,7 +113,7 @@ export class AudioProcessor extends ContentRendererProcessor implements ContentR
 					return "current";
 
 				case HtmlAttribute.MediaElement.Plugin.Data.SeekOnPause.Values.INITIAL:
-				default:
+				case null:
 					return "init";
 			}
 		};
@@ -465,7 +465,7 @@ class TimeLoopController extends Component {
 					Env.log.proc(`\t\tSetting playback position to ${this.info.startTime}.`);
 					this.seekTo(player, this.info.startTime);
 					break;
-				default:
+				case "current":
 					Env.log.proc(`\t\tRetaining playback position`);
 			}
 		}

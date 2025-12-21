@@ -1,5 +1,19 @@
+import { Str } from "#/utils/ts";
+
 export const HtmlTag = {
 	SPAN: "span",
+	SELECT: {
+		NAME: "select",
+		OPTION: {
+			NAME: "option",
+			Values: {
+				/** Represents an empty option, used as a placeholder or for no selection. */
+				NONE: Str.EMPTY,
+			},
+			isNone: (value: string): boolean => value === Str.EMPTY,
+			select: (el: HTMLOptionElement) => el.selected = true,
+		}
+	}
 } as const;
 
 export const HtmlAttribute = {
@@ -23,7 +37,7 @@ export const HtmlAttribute = {
 		Controls: {
 			NAME: "controls",
 			Values: {
-				DISPLAY: ""
+				DISPLAY: Str.EMPTY
 			}
 		},
 		/** The controlsList property of an HTMLMediaElement (like <video> or <audio>) allows you to control which built-in playback controls the user agent (browser) should display. */
@@ -39,7 +53,7 @@ export const HtmlAttribute = {
 		Loop: {
 			NAME: "loop",
 			Values: {
-				DISPLAY: ""
+				DISPLAY: Str.EMPTY
 			}
 		},
 		// https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/preload

@@ -9,7 +9,7 @@ import { ElementCreator } from "utils/ElementCreator";
 import { KeyValue } from "utils/ts";
 import { ReviewState } from "views/review/types";
 
-export function createRatingButtons(nextItemsWithInfo: { item: NextItem, info: ReviewItemInfo }[], reviewState: ReviewState, sortOrder: ReviewSortOrder, cb: (button: HTMLButtonElement, rating: Rating) => void) {
+export function createRatingButtons(nextItemsWithInfo: { item: NextItem, info: ReviewItemInfo }[], reviewState: ReviewState, _sortOrder: ReviewSortOrder, cb: (button: HTMLButtonElement, rating: Rating) => void) {
 	Env.log.d("createRatingButtons");
 
 	const ratingButtonsContainer = createDiv({ cls: "rating-buttons" });
@@ -155,7 +155,7 @@ export function createMetadataEl(
 			}
 
 			row.add((col) => {
-				col.add({ text: "Last review" })
+				col.add({ text: "Last reviewed" })
 				const date = info.lastReview;
 				col.add({
 					text: date !== null ? DateTime.toString(date) : "This is the first review.",

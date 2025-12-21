@@ -1,21 +1,43 @@
-import { DataStore, DeckIDDataTuple } from "data/DataStore";
+import { DataStore, DeckIDDataTuple } from "#/data/DataStore";
+import { HtmlTag } from "#/utils/dom/constants";
 import { App, SuggestModal } from "obsidian";
-import { UIAssistant } from "ui/UIAssistant";
 
+const ALL_DECKS = {
+  id: HtmlTag.SELECT.OPTION.Values.NONE,
+  data: {
+    n: "All Decks",
+    p: []
+  }
+};
+
+function isAllDecks(deck: DeckIDDataTuple): boolean {
+  return HtmlTag.SELECT.OPTION.isNone(deck.id);
+}
+
+/**
+	* A `null` value indicates that the user selected "All Decks".
+	*/
+export type OnChooseCallback = (deck: DeckIDDataTuple | null, evt: MouseEvent | KeyboardEvent) => void;
 
 export class SelectDeckModal extends SuggestModal<DeckIDDataTuple> {
 
-  private decks: DeckIDDataTuple[];
+	private decks: DeckIDDataTuple[];
 
+	private readonly onChoose: OnChooseCallback | undefined;
+
+	/**
+		* @param decks If you already have all decks, or if you want to display a subset.
+		*/
   constructor(
     app: App,
     private readonly data: DataStore,
     decks?: DeckIDDataTuple[],
-    private readonly onChoose?: (deck: DeckIDDataTuple, evt: MouseEvent | KeyboardEvent) => void) {
+    onChoose?: OnChooseCallback) {
     super(app);
 
     this.setPlaceholder("Select deck");
-    this.decks = decks ?? this.data.getAllDecks();
+		this.decks = [...[ALL_DECKS], ...decks ?? this.data.getAllDecks()];
+		this.onChoose = onChoose;
   }
 
   getSuggestions(query: string): DeckIDDataTuple[] | Promise<DeckIDDataTuple[]> {
@@ -23,13 +45,13 @@ export class SelectDeckModal extends SuggestModal<DeckIDDataTuple> {
   }
 
   renderSuggestion(value: DeckIDDataTuple, el: HTMLElement): void {
-    const numberOfCards = this.data.getAllCardsForDeck(value.id === UIAssistant.DECK_ID_NONE ? undefined : value.id).length;
+    const numberOfCards = this.data.getAllCardsForDeck(isAllDecks(value) ? undefined : value.id).length;
     el.createEl('div', { text: `${value.data.n}` }).createEl('small', { text: ` (${numberOfCards})` });
     el.createEl('small', { text: value.data.p.length > 0 ? this.descendants(value) : "" });
   }
 
   onChooseSuggestion(item: DeckIDDataTuple, evt: MouseEvent | KeyboardEvent): void {
-    this.onChoose?.(item, evt);
+    this.onChoose?.(isAllDecks(item) ? null : item, evt);
   }
 
   private descendants(deck: DeckIDDataTuple): string {

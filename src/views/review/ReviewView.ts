@@ -1,26 +1,32 @@
-import { ContentParser } from "ContentParser";
-import { DataStore, DeckIDDataTuple } from "data/DataStore";
-import { DeckID } from "data/FullID";
-import { Env } from "env";
-import t from "Localization";
-import { ReviewItemInfoModal } from "modals/ReviewItemInfoModal";
+import { ContentParser } from "#/ContentParser";
+import { DataStore, DeckIDDataTuple } from "#/data/DataStore";
+import { DeckID } from "#/data/FullID";
+import { Env } from "#/env";
+import t from "#/Localization";
+import { ReviewItemInfoModal } from "#/modals/ReviewItemInfoModal";
+import { HeadingProcessor } from "#/renderings/content/HeadingProcessor";
+import { ReviewItemInfo } from "#/scheduling/ReviewItemInfo";
+import { Scheduler } from "#/scheduling/Scheduler";
+import { NextReviewItemOptions, Rating, ReviewSortOrder } from "#/scheduling/types";
+import { SettingsManager } from "#/Settings";
+import { OmitIndexSignature, UnsignedInteger } from "#/types";
+import { Icon } from "#/ui/constants";
+import { UIAssistant } from "#/ui/UIAssistant";
+import { UnexpectedUndefinedError } from "#/utils/errors";
+import { FileParserError } from "#/utils/obs/FileParser";
+import { InternalApi } from "#/utils/obs/internal";
+import { Bln, Num, Obj, Str } from "#/utils/ts";
+import { BaseView, BaseViewEphemeralState, BaseViewState } from "#/views/BaseView";
+import { ContentUnit } from "#/views/review/ContentUnit";
+import { createMetadataEl, createRatingButtons } from "#/views/review/elements";
+import { ReviewState } from "#/views/review/types";
 import { IconName, Keymap, KeymapEventListener, Menu, PaneType, Scope, setIcon, setTooltip, TFile, ViewStateResult, WorkspaceLeaf } from "obsidian";
-import { HeadingProcessor } from "renderings/content/HeadingProcessor";
-import { ReviewItemInfo } from "scheduling/ReviewItemInfo";
-import { Scheduler } from "scheduling/Scheduler";
-import { Rating } from "scheduling/types";
-import { NextReviewItemOptions, ReviewSortOrder } from "scheduling/types";
-import { SettingsManager } from "Settings";
-import { OmitIndexSignature, UnsignedInteger } from "types";
-import { Icon } from "ui/constants";
-import { UIAssistant } from "ui/UIAssistant";
-import { FileParserError } from "utils/obs/FileParser";
-import { InternalApi } from "utils/obs/internal";
-import { Num, Obj, Str } from "utils/ts";
-import { BaseView, BaseViewEphemeralState, BaseViewState } from "views/BaseView";
-import { ContentUnit } from "views/review/ContentUnit";
-import { createMetadataEl, createRatingButtons } from "views/review/elements";
-import { ReviewState } from "views/review/types";
+
+declare global {
+	interface DOMStringMap {
+		didAdjustButtons?: import("#/utils/ts").BoolStr;
+	}
+}
 
 interface ReviewViewState extends BaseViewState {
 	deckID: DeckID | null;
@@ -51,12 +57,12 @@ export class ReviewView extends BaseView<ReviewViewState> {
 	public static readonly TYPE = "come-through-view-review";
 	public static createViewState(deckID: DeckID | null): ReviewViewState {
 		Env.log.d("ReviewView:createViewState: collection ID:", deckID);
-		return {
+		return BaseView.withDefaultViewState({
 			...DEFAULT_STATE,
 			...{
 				deckID: deckID,
 			},
-		} satisfies ReviewViewState;
+		} satisfies ReviewViewState);
 	}
 
 	private readonly data: DataStore;
@@ -177,14 +183,6 @@ export class ReviewView extends BaseView<ReviewViewState> {
 		return this.deck ? `Review: ${this.deck.data.n}` : "Review";
 	}
 
-	public override onload(): void {
-		Env.log.d("ReviewView:onload");
-		super.onload();
-
-		if (Env.isMobile)
-			this.registerDomEvent(this.contentEl, "dblclick", () => { this.displayNextContentItem(); });
-	}
-
 	public override onPaneMenu(menu: Menu, source: 'more-options' | 'tab-header' | string): void {
 		Env.log.d("ReviewView:onPaneMenu");
 		super.onPaneMenu(menu, source);
@@ -241,17 +239,40 @@ export class ReviewView extends BaseView<ReviewViewState> {
 		Env.log.d("ReviewView:onOpen");
 		await super.onOpen();
 
+		if (Env.isMobile)
+			this.interactionAssistant.registerDoubleClick(this.contentEl, () => this.displayNextContentItem());
+
 		const props = this.forwardBackwardButtonProps();
 		this.displayNextContentButton = this.addAction(props.icon, props.title, () => this.displayNextContentItem());
 	}
 
-	protected override onSetState(state: ReviewViewState, result: ViewStateResult): void {
+	protected override onSetState(state: ReviewViewState, _result: ViewStateResult): void {
 		Env.log.d("ReviewView:onSetState", state);
-		this.state = { ...DEFAULT_STATE, ...state };
-		this.deck = state.deckID ? {
-			id: state.deckID,
-			data: this.data.getDeck(state.deckID, true)!
-		} : null;
+
+		const setState = () => {
+			this.state = { ...DEFAULT_STATE, ...state };
+			this.deck = state.deckID ? {
+				id: state.deckID,
+				data: this.data.getDeck(state.deckID, true)!
+			} : null;
+		};
+
+		if (Bln.isTrue(state.forceUpdate)) {
+
+			// Makes sense to retain these "settings" when the same leaf is reused.
+			const retainedStateProps = DEFAULT_STATE;
+			retainedStateProps.sortOrder = this.state.sortOrder;
+			retainedStateProps.showMetadata = this.state.showMetadata;
+
+			setState();
+
+			this.state.sortOrder = retainedStateProps.sortOrder;
+			this.state.showMetadata = retainedStateProps.showMetadata;
+
+			this.removeAllPages(true);
+		} else {
+			setState();
+		}
 	}
 
 	protected override onGetState(): ReviewViewState {
@@ -498,8 +519,11 @@ export class ReviewView extends BaseView<ReviewViewState> {
 		this.refreshUI();
 	}
 
+	/**
+		* Gets the avalable content from the pager and inserts it into the DOM, replacing the current content.
+		*/
 	private displayPageAtIndex(index: UnsignedInteger): boolean {
-		Env.log.d("ReviewView:displayContentAtIndex:", index, "review", this.reviewState);
+		Env.log.d("ReviewView:displayPageAtIndex:", index, "review", this.reviewState);
 
 		Num.UInt.assert(index);
 		if (!Num.UInt.is(index))
@@ -526,7 +550,7 @@ export class ReviewView extends BaseView<ReviewViewState> {
 			this.dom.contentEl.appendChild(contentToDisplay);
 		}
 		else {
-			Env.assert(currentContent.parentElement); // Uncaught NotFoundError: Failed to execute 'replaceChild' on 'Node': The node to be replaced is not a child of this node.
+			Env.assert(currentContent.parentElement !== null); // Uncaught NotFoundError: Failed to execute 'replaceChild' on 'Node': The node to be replaced is not a child of this node.
 			this.dom.contentEl.replaceChild(contentToDisplay, currentContent);
 		}
 
@@ -538,6 +562,9 @@ export class ReviewView extends BaseView<ReviewViewState> {
 
 	/**
 		* Removes all cached pages/divs created from the last review unit.
+		*
+		* Sometimes you want to call render to build additional components, like the info view, without rebuilding the review content.
+		* Even if {@link BaseView.render} removes all content, the created pages are still retained/cached in the {@link pager} and inserted.
 		*
 		* @param includeEphemeralState Explicitly declare intent to reset ephemeral state
 		*/
@@ -579,6 +606,7 @@ export class ReviewView extends BaseView<ReviewViewState> {
 		return this.pager.currentIndex === 1;
 	}
 
+	/** Adjusts the UI components (such as buttons, scrollbar) based on the current state. */
 	private refreshUI() {
 		Env.log.d("ReviewView:refreshUI");
 
@@ -626,7 +654,7 @@ export class ReviewView extends BaseView<ReviewViewState> {
 		if (!this.ratingButtonsContainer)
 			return;
 
-		if (this.ratingButtonsContainer.dataset.didAdjustButtons)
+		if (Bln.isTrueStr(this.ratingButtonsContainer.dataset.didAdjustButtons))
 			return;
 
 		// The container needs to be in the DOM otherwise widths may not be available.
@@ -638,14 +666,33 @@ export class ReviewView extends BaseView<ReviewViewState> {
 			return;
 
 		let maxWidth = 0;
+		let minContentWidth = Infinity;
+
 		ratingButtons.forEach((btn) => {
 			const width = btn.offsetWidth;
 			if (width > maxWidth)
 				maxWidth = width;
+
+			// Find the button whose content/text is of minimum width, this is used to widen the button if the radius is too large.
+			const firstChild = btn.firstElementChild;
+			if (firstChild instanceof HTMLElement && firstChild.offsetWidth < minContentWidth)
+				minContentWidth = firstChild.offsetWidth;
 		});
+
+		// The width of the wides button is now found.
+		// But before setting this width, check that the current radius (set by the Obsidian theme) is not so large that the button becomes a circle.
+		// If the radius is too large, adjust the width to avoid the circular appearance.
+		const firstBtn = ratingButtons[0];
+		if (firstBtn === undefined)
+			throw new UnexpectedUndefinedError();
+		const borderRadius = parseFloat(getComputedStyle(firstBtn).borderRadius);
+		const minDimension = Math.min(maxWidth, firstBtn.offsetHeight);
+		if (borderRadius >= minDimension / 2) // Radius is to large relative to the buttons dimensions. For example, a true circle results from a square button (equal width and height) with a radius of half that size.
+			maxWidth = borderRadius * 2 + (minContentWidth === Infinity ? 2 : minContentWidth) * 0.5; //"borderRadius * 2" is the width that makes it a circle, then whatever is added will make up the horizontal border.
+
 		ratingButtons.forEach(btn => btn.setCssProps({ "width": maxWidth + "px" }));
 
-		this.ratingButtonsContainer.dataset.didAdjustButtons = "yes";
+		this.ratingButtonsContainer.dataset.didAdjustButtons = "true";
 	}
 
 	/**

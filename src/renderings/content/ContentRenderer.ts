@@ -9,7 +9,7 @@ import { RecycleComponent } from "utils/obs/RecycleComponent";
 import { PluginSettings } from "Settings";
 import { Async } from "utils/ts";
 
-export function createRenderConfig(settings: PluginSettings): ContentProcessorConfig {
+export function createRenderConfig(_settings: PluginSettings): ContentProcessorConfig {
 	return {
 		media: {
 			preventMultiplePlayback: true,
@@ -45,7 +45,7 @@ export class ContentRenderer extends RecycleComponent {
 		this.config = config;
 	}
 
-	protected onRecycled(component: Component): void {
+	protected override onRecycled(component: Component): void {
 		Env.log.d("ContentRenderer:onRecycled");
 
 		/** These will always run, and before any custom ones. */
@@ -59,7 +59,7 @@ export class ContentRenderer extends RecycleComponent {
 		this.defaultProcessors.forEach(p => component.addChild(p));
 	}
 
-	protected onRecycling(): void {
+	protected override onRecycling(): void {
 		Env.log.d("ContentRenderer:onRecycling");
 		this.defaultProcessors = [];
 		this.customProcessors = [];
@@ -112,8 +112,7 @@ export class ContentRenderer extends RecycleComponent {
 			return;
 		}
 
-		if (processors)
-			processors.forEach(p => this.recycleComponent.addChild(p));
+		processors.forEach(p => this.recycleComponent.addChild(p));
 
 		const param = {
 			app: this.app,
@@ -151,7 +150,6 @@ export class ContentRenderer extends RecycleComponent {
 				processor.handleHtml(postParameter);
 		}
 
-		if (processors)
-			processors.forEach(p => this.recycleComponent.removeChild(p));
+		processors.forEach(p => this.recycleComponent.removeChild(p));
 	}
 }

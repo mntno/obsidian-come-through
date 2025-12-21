@@ -1,28 +1,31 @@
-import { IDScope } from "declarations/CardDeclaration";
-import { CommandableDeclarable } from "declarations/CommandDeclaration";
-import { CommandDeclarationParsable, CommandDeclarationParser } from "declarations/CommandDeclarationParser";
-import { HeadingsCommandableAssistant, HeadingsCommandableDeclarable } from "declarations/commands/HeadingsCommandable";
+import { CommandableDeclarable } from "#/declarations/Commandable";
+import { CommandDeclarationParsable, CommandDeclarationParser } from "#/declarations/CommandDeclarationParser";
+import { CommandName, Commands } from "#/declarations/CommandNames";
+import { HeadingsCommandableAssistant, HeadingsCommandableDeclarable } from "#/declarations/commands/HeadingsCommandable";
+import { IDScope } from "#/declarations/ExplicitDeclaration";
+import { UnexpectedUndefinedError } from "#/utils/errors";
+import { UNARY_UNION_SUPPRESS } from "#/utils/ts";
 import { CacheItem, HeadingCache } from "obsidian";
-import { UnexpectedUndefinedError } from "utils/errors";
 
 export interface HeadingAndDelimiterDeclarable extends HeadingsCommandableDeclarable {
-	delimiter: "horizontal rule"
+	delimiter: "horizontal rule" | typeof UNARY_UNION_SUPPRESS;
 }
 
+/** Helpers related to {@link HeadingAndDelimiterDeclarable}. */
 export class HeadingAndDelimiterAssistant extends HeadingsCommandableAssistant {
 
-	public static tryCreateParser(commandable: CommandableDeclarable): CommandDeclarationParsable | null {
-		return (
-			HeadingAndDelimiterAssistant.conforms<HeadingAndDelimiterDeclarable>(commandable) &&
-			HeadingAndDelimiterAssistant.isValid(commandable)
-		) ? new HeadingAndDelimiterParser(commandable) : null;
+	public static override is(value: unknown): value is HeadingAndDelimiterDeclarable {
+		if (!HeadingsCommandableAssistant.is(value))
+			return false;
+
+		return (Commands.Name.HeadingAndDelimiter as readonly CommandName[]).includes(value.name);
 	}
 
-	public static isValid(command: HeadingAndDelimiterDeclarable) {
-		return (
-			super.isValid(command) &&
-			this.isDelimiterValid(command)
-		);
+	public static override isValid(declarable: HeadingAndDelimiterDeclarable) {
+		if (!HeadingsCommandableAssistant.isValid(declarable))
+			return false;
+
+		return ThisAssistant.isDelimiterValid(declarable);
 	}
 
 	private static isDelimiterValid(command: HeadingAndDelimiterDeclarable) {
@@ -32,6 +35,7 @@ export class HeadingAndDelimiterAssistant extends HeadingsCommandableAssistant {
 			switch (command.delimiter as string) {
 				case "hr":
 					setDefault();
+					return true;
 				case "horizontal rule":
 					return true;
 			}
@@ -44,12 +48,17 @@ export class HeadingAndDelimiterAssistant extends HeadingsCommandableAssistant {
 		return false;
 	}
 }
+const ThisAssistant = HeadingAndDelimiterAssistant;
 
 export class HeadingAndDelimiterParser extends CommandDeclarationParser<HeadingAndDelimiterDeclarable> {
 
-	/**
-		* If set, it means that the current iteration is the back side and that this is the expected level of the heading that marks the end of the back side.
- 		*/
+	public static tryCreate(declarable: CommandableDeclarable): CommandDeclarationParsable | null {
+		if (ThisAssistant.is(declarable) && ThisAssistant.isValid(declarable))
+			return new this(declarable)
+		return null;
+	}
+
+	/** If set, it means that the current iteration is the back side and that this is the expected level of the heading that marks the end of the back side. */
 	private lastFrontHeadingLevel: number | undefined;
 
 	public parse(parentHeadingLevel: number, inBetweenDelimiter: CacheItem, index: number, delimiters: CacheItem[]) {
@@ -63,17 +72,17 @@ export class HeadingAndDelimiterParser extends CommandDeclarationParser<HeadingA
 		}
 
 		let id: string;
-		let idScope;
+		let idScope: IDScope;
 
 		if (isDelimiterHeading) {
 			const uniqueID = this.tryParseUniqueID(inBetweenDelimiter.heading);
-			if (uniqueID) {
+			if (uniqueID !== null) {
 				id = uniqueID;
-				idScope = IDScope.UNIQUE;
+				idScope = IDScope.Unique;
 			}
 			else {
 				id = inBetweenDelimiter.heading;
-				idScope = IDScope.NOTE;
+				idScope = IDScope.Note;
 			}
 		}
 		else if (HeadingAndDelimiterParser.isSectionType(inBetweenDelimiter, HeadingAndDelimiterParser.SECTION_TYPE_THEMATICBREAK)) {
@@ -119,12 +128,4 @@ export class HeadingAndDelimiterParser extends CommandDeclarationParser<HeadingA
 	private isOnSpecifiedLevel(parentHeadingLevel: number, section: HeadingCache) {
 		return section.level == parentHeadingLevel + this.commandable.level;
 	}
-
-	private tryParseUniqueID(text: string) {
-		const match = this.FULL_ID_REGEX.exec(text);
-		const result = match?.[1];
-		return result !== undefined ? result.toLowerCase() : null;
-	}
-	protected readonly FULL_ID_REGEX = /@([^\s]+)/i;
-
 }

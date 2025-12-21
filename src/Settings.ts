@@ -4,6 +4,7 @@ import { isString } from "TypeAssistant";
 import { PLUGIN_NAME } from "ui/constants";
 
 export interface PluginSettings {
+	/** Trimmed. */
 	uiPrefix: string;
 	hideCardSectionMarker: boolean;
 	hideDeclarationInReadingView: boolean;
@@ -47,7 +48,7 @@ const DEFAULT_SCHEDULER: FsrsScheduler = {
 
 export type SettingsChanged = (settings: PluginSettings, isExternal: boolean) => void;
 
-export type SettingsChangedInfo = "schedulerConfig"; // | "x"
+export type SettingsChangedInfo = "schedulerConfig";// | typeof UNARY_UNION_DEFAULT;
 
 export class SettingsManager {
 
@@ -55,7 +56,7 @@ export class SettingsManager {
 	public settings: PluginSettings;
 
 	/** Saves the {@link settings} to disk. */
-	public save: (changedInfo?: SettingsChangedInfo) => Promise<void>;
+	public readonly save: (changedInfo?: SettingsChangedInfo) => Promise<void>;
 
 	public static readonly DEFAULT_DATA: PluginSettings = {
 		uiPrefix: PLUGIN_NAME,
@@ -68,11 +69,14 @@ export class SettingsManager {
 		}
 	};
 
-	public constructor(settings: PluginSettings, save: (settings: PluginSettings) => Promise<void>, onSaved: (changedInfo?: SettingsChangedInfo) => void) {
+	public constructor(
+		settings: PluginSettings,
+		save: (settings: PluginSettings) => Promise<void>,
+		onSaved: (changedInfo?: SettingsChangedInfo) => void) {
 		this.settings = settings;
 		this.save = async (changedInfo?: SettingsChangedInfo) => {
 			await save(this.settings);
-			onSaved?.(changedInfo);
+			onSaved(changedInfo);
 			this.notifyOnChangedListeners(false);
 		};
 	}

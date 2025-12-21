@@ -1,11 +1,14 @@
-import { FullID, IDFilter, NoteID } from "data/FullID";
-import { CardDeclarable, CardDeclarationAssistant, DefaultableCardDeclarable } from "declarations/CardDeclaration";
-import { CommandableDeclarable, CommandDeclarationAssistant } from "declarations/CommandDeclaration";
-import { Declaration, DeclarationRange } from "declarations/Declaration";
+import { FullID, IDFilter, NoteID } from "#/data/FullID";
+import { CommandableAssistant, CommandableDeclarable } from "#/declarations/Commandable";
+import { CommandDeclarationParsable } from "#/declarations/CommandDeclarationParser";
+import { DeclarationConstants } from "#/declarations/constants";
+import { DeclarationCodec, YamlParseErrorCallback } from "#/declarations/DeclarationCodec";
+import { CardDeclarable, DefaultableCardDeclarable, ExplicitDeclarationAssistant } from "#/declarations/ExplicitDeclaration";
+import { ParserRegistry } from "#/declarations/ParserRegistry";
+import { asNoteID, fullIDFromDeclaration } from "#/TypeAssistant";
+import { UnexpectedUndefinedError } from "#/utils/errors";
+import { FileParser, OffsetRange, SectionRange } from "#/utils/obs/FileParser";
 import { App, CachedMetadata, CacheItem, FrontMatterCache, HeadingCache, SectionCache, TFile } from "obsidian";
-import { asNoteID, fullIDFromDeclaration } from "TypeAssistant";
-import { UnexpectedUndefinedError } from "utils/errors";
-import { FileParser, SectionRange } from "utils/obs/FileParser";
 
 /**
  * Contains auxiliary information collected during the parsing process.
@@ -27,7 +30,7 @@ export interface PostParseInfo {
 }
 
 /**
- * All info needed to extract a {@link CardDeclarationAssistant|declaration block} from a note.
+ * All info needed to extract a {@link CardDeclarable | declaration block} from a note.
  */
 export interface DeclarationInfo extends DeclarationInfoBase {
 	/** The declaration candidate. */
@@ -45,7 +48,7 @@ interface DeclarationInfoBase {
 	/** The {@link SectionCache} in {@link noteID} where declaration was found. */
 	section: SectionCache;
 	/** The location of the declaration within the {@link section}. */
-	location: DeclarationRange;
+	location: OffsetRange;
 }
 
 export class DeclarationParser extends FileParser {
@@ -67,7 +70,7 @@ export class DeclarationParser extends FileParser {
 
 		let cache;
 		try {
-		 cache = this.fileCacheOrThrow(app, file);
+			cache = this.fileCacheOrThrow(app, file);
 		}
 		catch (error) {
 			console.error(error);
@@ -78,7 +81,7 @@ export class DeclarationParser extends FileParser {
 
 		// Check frontmatter for explicit declaration
 		if (cache.frontmatter) {
-			for (const key of Declaration.supportedFrontmatterKeys)
+			for (const key of DeclarationConstants.Frontmatter.KEYS)
 				if (Object.hasOwn(cache.frontmatter, key))
 					return true;
 		}
@@ -94,8 +97,8 @@ export class DeclarationParser extends FileParser {
 			for (const section of cache.sections) {
 				if (this.isCodeSection(section)) {
 					if (fileContent) {
-						const info = this.parseCodeBlock(this.extractContentFromSection(section, fileContent));
-						if (info !== null && Declaration.supportedCodeBlockLanguages.includes(info.language))
+						const info = DeclarationParser.parseCodeBlock(this.extractContentFromSection(section, fileContent));
+						if (info !== null && DeclarationConstants.CodeBlock.isSupportedLanguage(info.language))
 							return true;
 					}
 					else {
@@ -164,7 +167,7 @@ export class DeclarationParser extends FileParser {
 			const declaration = this.getDeclarationFromFrontmatter(cache.frontmatter, noteID, parseInfo);
 			if (declaration) {
 				const id = fullIDFromDeclaration(declaration, noteID);
-				if (!checkExistance(id) && (filter === undefined || (filter && filter(id))))
+				if (!checkExistance(id) && (filter === undefined || filter(id)))
 					ids.push(id);
 			}
 		}
@@ -173,7 +176,7 @@ export class DeclarationParser extends FileParser {
 		for (const currentHeading of cache.headings ?? []) {
 			const id = this.findFullIDInText(currentHeading.heading, noteID);
 			if (id !== null && !checkExistance(id)) {
-				if (filter === undefined || (filter && filter(id)))
+				if (filter === undefined || filter(id))
 					ids.push(id);
 			}
 		}
@@ -183,7 +186,7 @@ export class DeclarationParser extends FileParser {
 
 			const createAndAddIDFromDeclaration = (declaration: CardDeclarable) => {
 				const id = fullIDFromDeclaration(declaration, noteID);
-				if (!checkExistance(id) && (filter === undefined || (filter && filter(id))))
+				if (!checkExistance(id) && (filter === undefined || filter(id)))
 					ids.push(id);
 			}
 
@@ -236,8 +239,8 @@ export class DeclarationParser extends FileParser {
 		* @returns The first declaration found in {@link frontmatter}.
 		*/
 	protected static getDeclarationFromFrontmatter(frontmatter: FrontMatterCache, noteID: NoteID, parseInfo?: PostParseInfo) {
-		for (const key of Declaration.supportedFrontmatterKeys) {
-			const declaration = CardDeclarationAssistant.fromFrontmatter(frontmatter[key], (incomplete, location) => {
+		for (const key of DeclarationConstants.Frontmatter.KEYS) {
+			const declaration = DeclarationParser.declarationFromFrontmatter(frontmatter[key], (incomplete, location) => {
 				parseInfo?.incompleteDeclarationInfos.push({
 					noteID: noteID,
 					declaration: incomplete,
@@ -264,7 +267,7 @@ export class DeclarationParser extends FileParser {
 
 		const source = FileParser.extractContentFromSection(section, fileContent);
 
-		return CardDeclarationAssistant.parseCodeBlock(
+		return DeclarationParser.createExplicitDeclaration(
 			source,
 			(parseError) => {
 				parseInfo?.invalidYaml.push({
@@ -273,12 +276,12 @@ export class DeclarationParser extends FileParser {
 					error: parseError
 				});
 			},
-			(incomplete, location) => {
+			(incomplete, range) => {
 				parseInfo?.incompleteDeclarationInfos.push({
 					noteID: noteID,
 					declaration: incomplete,
 					section: section,
-					location: location,
+					location: range,
 				});
 			}
 		);
@@ -298,7 +301,7 @@ export class DeclarationParser extends FileParser {
 
 		const source = fileContent.slice(section.position.start.offset, section.position.end.offset);
 
-		const parser = CommandDeclarationAssistant.createParser(
+		const parser = DeclarationParser.createCommandDeclarationParser(
 			source,
 			(parseError) => {
 				parseInfo?.invalidYaml.push({
@@ -359,6 +362,98 @@ export class DeclarationParser extends FileParser {
 				else
 					console.error("Expected heading");
 			});
+	}
+
+	/**
+		* Attempts to create a {@link CardDeclarable} from {@link source}.
+		*
+		* @param source The code block including the three ticks at the beginning and end.
+		* @param onParseError
+		* @param incompleteCallback Invoked if content of {@link source} is recognized but is missing required properties.
+		* @returns `null` if {@link source} is not recognized or it contains invalid YAML.
+	*/
+	private static createExplicitDeclaration(
+		source: string,
+		onParseError?: YamlParseErrorCallback,
+		incompleteCallback?: (incomplete: DefaultableCardDeclarable, range: OffsetRange) => void) {
+
+		const info = DeclarationParser.parseAndCheckCodeBlock(source);
+		if (info === null)
+			return null;
+
+		const obj = DeclarationCodec.tryFromYaml(info.content, onParseError);
+		if (obj === null)
+			return null;
+
+		const declaration = DeclarationParser.tryCreateDeclaration(obj);
+
+		if (declaration === null && ExplicitDeclarationAssistant.Defaultable.is(obj) && incompleteCallback)
+			incompleteCallback(obj, info.location);
+
+		return declaration;
+	}
+
+	protected static declarationFromFrontmatter(obj: Record<string, unknown>, incompleteCallback?: (incomplete: DefaultableCardDeclarable, range: OffsetRange) => void) {
+		const declaration = DeclarationParser.tryCreateDeclaration(obj);
+
+		if (declaration === null && ExplicitDeclarationAssistant.Defaultable.is(obj) && incompleteCallback) {
+			// This position should really be the position in the front matter YAML where the declaration is.
+			// But, since this is the frontmatter, there's no need slice strings as editing is done with `obsidian` `FileManager.processFrontMatter`.
+			incompleteCallback(obj, { start: 0, end: 0 });
+		}
+
+		return declaration;
+	}
+
+	/**
+		* Attempts to create a {@link CommandDeclarationParsable} from {@link source}.
+		*
+		* @param source The raw code block text string of the command declaration.
+		* @param onParseError The formatting of {@link source} invalid YAML.
+		* @param onInvalidType
+		* @returns `null` if {@link source} is not recognized.
+		*/
+	private static createCommandDeclarationParser(
+		source: string,
+		onParseError?: YamlParseErrorCallback,
+		onInvalidType?: (command: CommandableDeclarable, range: OffsetRange) => void): CommandDeclarationParsable | null {
+
+		const info = DeclarationParser.parseAndCheckCodeBlock(source);
+		if (!info)
+			return null;
+
+		const obj = DeclarationCodec.tryFromYaml(info.content, onParseError);
+		const commandable = obj !== null && CommandableAssistant.is(obj) ? obj : null;
+
+		let parser: CommandDeclarationParsable | null = null;
+		if (commandable !== null) {
+
+			parser = ParserRegistry.tryCreate(commandable);
+
+			if (parser === null && onInvalidType)
+				onInvalidType(commandable, info.location);
+		}
+
+		return parser;
+	}
+
+	/**
+		* Checks if this a code block with one of the expected languages; if so, parses it.
+		* @param source The code block including the three ticks at the beginning and end.
+		* @returns `null` is {@link source} is not a code block or if the block's language is unexpected.
+		*/
+	private static parseAndCheckCodeBlock(source: string) {
+		const info = FileParser.parseCodeBlock(source);
+
+		if (info !== null && !DeclarationConstants.CodeBlock.isSupportedLanguage(info.language))
+			return null;
+
+		return info;
+	}
+
+	/** @returns `null` if the {@link obj} is not a valid {@link CardDeclarable} */
+	private static tryCreateDeclaration(obj: Record<string, unknown>) {
+		return ExplicitDeclarationAssistant.is(obj) ? ExplicitDeclarationAssistant.createWithUniqueScope(obj) : null;
 	}
 
 	/**

@@ -90,6 +90,8 @@ id: card2
 ```
 ````
 
+There are commands that let you insert these declarations without typing in the [Command palette](https://help.obsidian.md/plugins/command-palette).
+
 > [!NOTE]
 >
 > The card declaration format is plain YAML (same as Obsidian [properties](https://help.obsidian.md/properties#Property+format)) so the YAML specification has to be adhered to. For example, there must be a space between the colon and the value.

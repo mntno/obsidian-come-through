@@ -14,9 +14,9 @@ export class DefinedContentView extends BaseView<DefinedContentViewState> {
 
 	public static readonly TYPE = "come-through-view-defined-content";
 	public static createViewState(file: TFile): DefinedContentViewState {
-		return {
+		return BaseView.withDefaultViewState({
 			filePath: file.path,
-		};
+		} satisfies DefinedContentViewState);
 	}
 
 	/**
@@ -24,9 +24,6 @@ export class DefinedContentView extends BaseView<DefinedContentViewState> {
 		* - `undefined` if for other reasons there is no file.
 		*/
 	private file: TFile | null | undefined;
-
-	/** Keeps track of which details elements have been dynamically created on expand. */
-	private hasRendered: WeakMap<HTMLDetailsElement, boolean>;
 
 	/**
 		* @param data Used to receive data changed notifications.
@@ -55,12 +52,14 @@ export class DefinedContentView extends BaseView<DefinedContentViewState> {
 		// Note that the data change callback will also be called on file rename.
 		// The "rename" event will be called first.
 		// The difference is that when there's a rename event, we want to update the display text.
-		this.registerEvent(this.app.vault.on("rename", this.onFileRename.bind(this)));
+		this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
+			if (file instanceof TFile)
+				this.onFileRename(file, oldPath);
+		}));
 	}
 
 	public override onunload(): void {
 		super.onunload();
-		this.hasRendered = new WeakMap<HTMLDetailsElement, boolean>();
 	}
 
 	public override onPaneMenu(menu: Menu, source: 'more-options' | 'tab-header' | string): void {
@@ -76,7 +75,7 @@ export class DefinedContentView extends BaseView<DefinedContentViewState> {
 		});
 	}
 
-	protected override onSetState(state: DefinedContentViewState, result: ViewStateResult): void {
+	protected override onSetState(state: DefinedContentViewState, _result: ViewStateResult): void {
 		this.file = state.filePath ? this.app.vault.getFileByPath(state.filePath) : undefined;
 		this.contentRenderer.file = this.file;
 	}
@@ -119,7 +118,9 @@ export class DefinedContentView extends BaseView<DefinedContentViewState> {
 
 		// <summary> is styled as a <h2>, this will normalize its children to start at <h3>.
 		this.contentRenderer.setCustomProcessors([new HeadingProcessor(3)]);
-		this.hasRendered = new WeakMap<HTMLDetailsElement, boolean>();
+
+		// Keeps track of which details elements have been dynamically created on expand.
+		const hasRendered = new WeakMap<HTMLDetailsElement, boolean>();
 
 		this.dom.create.el("h1", { text: t.views.declarations.title(this.file) });
 		const infoPara = this.dom.create.paraWrapper();
@@ -137,19 +138,19 @@ export class DefinedContentView extends BaseView<DefinedContentViewState> {
 
 			if (parsedUnit.complete !== null) {
 				const completeUnit = parsedUnit.complete;
-				this.createDefinedContentBlockSection(`${completeUnit.frontID.cardID}: Front`, completeUnit.frontMarkdown);
-				this.createDefinedContentBlockSection(`${completeUnit.backID.cardID}: Back`, completeUnit.backMarkdown);
+				this.createDefinedContentBlockSection(hasRendered, `${completeUnit.frontID.cardID}: Front`, completeUnit.frontMarkdown);
+				this.createDefinedContentBlockSection(hasRendered, `${completeUnit.backID.cardID}: Back`, completeUnit.backMarkdown);
 				numberOfContentDefinitions += 2;
 			}
 			else if (parsedUnit.incomplete !== null) {
 				const incompleteUnit = parsedUnit.incomplete;
 
 				if (incompleteUnit.frontID) {
-					this.createDefinedContentBlockSection(`${incompleteUnit.frontID.cardID}: Front (incomplete)`, incompleteUnit.frontMarkdown);
+					this.createDefinedContentBlockSection(hasRendered, `${incompleteUnit.frontID.cardID}: Front (incomplete)`, incompleteUnit.frontMarkdown);
 					numberOfIncompleteContentDefinitionsInFile += 1;
 				}
 				if (incompleteUnit.backID) {
-					this.createDefinedContentBlockSection(`${incompleteUnit.backID.cardID}: Back (incomplete)`, incompleteUnit.backMarkdown);
+					this.createDefinedContentBlockSection(hasRendered, `${incompleteUnit.backID.cardID}: Back (incomplete)`, incompleteUnit.backMarkdown);
 					numberOfIncompleteContentDefinitionsInFile += 1;
 				}
 			}
@@ -163,13 +164,13 @@ export class DefinedContentView extends BaseView<DefinedContentViewState> {
 		await this.contentRenderer.render(markdownText, infoPara);
 	}
 
-	private createDefinedContentBlockSection(summary: string, content?: string) {
+	private createDefinedContentBlockSection(hasRendered: WeakMap<HTMLDetailsElement, boolean>, summary: string, content?: string) {
 		this.dom.create.el("details", undefined, (detailsEl) => {
 			detailsEl.createEl("summary", { text: summary });
 			const contentDiv = detailsEl.createDiv();
 			this.contentRenderer.registerDomEvent(detailsEl, "toggle", async () => {
-				if (detailsEl.open && !this.hasRendered.has(detailsEl)) {
-					this.hasRendered.set(detailsEl, true);
+				if (detailsEl.open && !hasRendered.has(detailsEl)) {
+					hasRendered.set(detailsEl, true);
 					if (content)
 						await this.contentRenderer.render(content, contentDiv);
 				}

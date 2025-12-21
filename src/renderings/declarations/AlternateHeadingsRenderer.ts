@@ -1,13 +1,17 @@
-import { DeclarationRenderer, DeclarationRenderable, DeclarationRenderAssistant } from "renderings/declarations/DeclarationRenderable";
-import { AlternateHeadingsDeclarable, AlternateHeadingsAssistant } from "declarations/commands/AlternateHeadings";
+import { AlternateHeadingsAssistant, AlternateHeadingsDeclarable } from "#/declarations/commands/AlternateHeadings";
+import { DeclarationRenderable, DeclarationRenderAssistant, DeclarationRenderer } from "#/renderings/declarations/DeclarationRenderable";
+
+const Assistant = AlternateHeadingsAssistant;
 
 export class AlternateHeadingsRenderer
 	extends DeclarationRenderer<AlternateHeadingsDeclarable>
 	implements DeclarationRenderable {
 
+	public static override canRender = (value: unknown) => Assistant.is(value);
+
 	public render(r: DeclarationRenderAssistant) {
 
-		if (!AlternateHeadingsAssistant.conforms(this.declarable) || !AlternateHeadingsAssistant.isValid(this.declarable)) {
+		if (!Assistant.isValid(this.declarable)) {
 			r.setError();
 			r.setTitle("Invalid alternate headings command");
 			r.addParagraph("Please check the entered values.");

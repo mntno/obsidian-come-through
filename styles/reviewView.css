@@ -16,6 +16,11 @@ div.come-through-workspace-leaf-content[data-type='come-through-view-review'] .r
 	width: auto;
 }
 
+/* Phone and tablet-specific line-height */
+.is-mobile div.come-through-workspace-leaf-content[data-type='come-through-view-review'] .rating-buttons > div > button {
+    line-height: 1.8;
+}
+
 /* Counter this selector: body.is-phone:not(.is-android:not(.material-off)) button:not(.clickable-icon) */
 div.come-through-workspace-leaf-content[data-type='come-through-view-review'] .view-content .rating-buttons > div > button {
 	justify-content: center;

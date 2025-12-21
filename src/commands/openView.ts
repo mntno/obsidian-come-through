@@ -3,7 +3,6 @@ import { DeclarationParser } from "declarations/DeclarationParser";
 import t from "Localization";
 import { SelectDeckModal } from "modals/SelectDeckModal";
 import { App, Command, Keymap, MarkdownView, PaneType, TFile } from "obsidian";
-import { UIAssistant } from "ui/UIAssistant";
 import { DecksView } from "views/DecksView";
 import { DefinedContentView } from "views/DefinedContentView";
 import { ReviewView } from "views/review/ReviewView";
@@ -15,6 +14,7 @@ export const OpenView = {
 		const leaf = app.workspace.getLeaf(paneType);
 		await leaf.setViewState({
 			type: DecksView.TYPE,
+			state: DecksView.createViewState(),
 			active: true,
 		});
 	},
@@ -45,21 +45,24 @@ export const OpenView = {
 		};
 
 		const allDecks = dataStore.getAllDecks();
-		if (allDecks.length) {
+		if (allDecks.length > 0) {
 			const modal = new SelectDeckModal(
 				app,
 				dataStore,
-				[...[UIAssistant.allDecksOptionItem()], ...allDecks],
-				async (deck, evt) => {
-					await openView(ReviewView.createViewState(deck.id === UIAssistant.DECK_ID_NONE ? null : deck.id), Keymap.isModEvent(evt));
+				allDecks,
+				(deck, evt) => {
+					openView(
+						ReviewView.createViewState(deck === null ? null : deck.id),
+						Keymap.isModEvent(evt)
+					).catch(console.error);
 				});
 			modal.setPlaceholder(t.modals.selectDeck.placeholder);
 			modal.open();
 		}
 		else {
-			await openView(undefined, paneType);
+			await openView(ReviewView.createViewState(null), paneType);
 		}
-}
+	}
 };
 
 export const OpenViewCommand = {

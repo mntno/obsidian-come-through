@@ -1,23 +1,24 @@
-import { OpenView, OpenViewCommand } from "commands/openView";
-import { ReviewViewCommand } from "commands/reviewView";
-import { DataStore, DataStoreRoot } from "data/DataStore";
-import { SyncManager } from "data/SyncManager";
-import { UniqueID } from "data/UniqueID";
-import { DeclarationManager } from "declarations/DeclarationManager";
-import { DeclarationParser } from "declarations/DeclarationParser";
-import { Env } from "env";
-import t from "Localization";
-import { ConfirmationModal } from "modals/ConfirmationModal";
-import { Editor, Keymap, MarkdownPostProcessorContext, MarkdownView, Plugin, TFile } from "obsidian";
-import { Scheduler } from "scheduling/Scheduler";
-import { FsrsSchedulerConfig } from "scheduling/types";
-import { PluginSettings, SettingsChangedInfo, SettingsManager } from "Settings";
-import { Icon } from "ui/constants";
-import { SettingTab } from "ui/SettingTab";
-import { UIAssistant } from "ui/UIAssistant";
-import { DecksView } from "views/DecksView";
-import { DefinedContentView } from "views/DefinedContentView";
-import { ReviewView } from "views/review/ReviewView";
+import { OpenView, OpenViewCommand } from "#/commands/openView";
+import { ReviewViewCommand } from "#/commands/reviewView";
+import { DataStore, DataStoreRoot } from "#/data/DataStore";
+import { SyncManager } from "#/data/SyncManager";
+import { DeclarationManager } from "#/declarations/DeclarationManager";
+import { DeclarationParser } from "#/declarations/DeclarationParser";
+import { Env } from "#/env";
+import t from "#/Localization";
+import { ConfirmationModal } from "#/modals/ConfirmationModal";
+import { Scheduler } from "#/scheduling/Scheduler";
+import { FsrsSchedulerConfig } from "#/scheduling/types";
+import { PluginSettings, SettingsChangedInfo, SettingsManager } from "#/Settings";
+import { Icon } from "#/ui/constants";
+import { SettingTab } from "#/ui/SettingTab";
+import { UIAssistant } from "#/ui/UIAssistant";
+import { DomState } from "#/utils/obs/DomState";
+import { DecksView } from "#/views/DecksView";
+import { DefinedContentView } from "#/views/DefinedContentView";
+import { ReviewView } from "#/views/review/ReviewView";
+import { EditorCommand } from "commands/editor";
+import { Keymap, MarkdownPostProcessorContext, Plugin, TFile } from "obsidian";
 
 interface PluginData {
 	settings: PluginSettings;
@@ -25,16 +26,16 @@ interface PluginData {
 }
 
 export default class ComeThroughPlugin extends Plugin {
-	private dataStore: DataStore;
-	private scheduler: Scheduler;
-	private settingsManager: SettingsManager;
-	private syncManager: SyncManager;
-	private ui: UIAssistant;
+	private dataStore!: DataStore;
+	private scheduler!: Scheduler;
+	private settingsManager!: SettingsManager;
+	private syncManager!: SyncManager;
+	private ui!: UIAssistant;
 
-	/** Must referene the latest data before {@link savePluginData} is called. Only needed to hold references in order to pass to {@link Plugin.saveData}, see {@link savePluginData}. */
-	private latestPluginDataRef: PluginData;
+	/** Must reference the latest data before {@link savePluginData} is called. Only needed to hold references in order to pass to {@link Plugin.saveData}, see {@link savePluginData}. */
+	private latestPluginDataRef!: PluginData;
 
-	public async onload() {
+	public override async onload() {
 
 		this.latestPluginDataRef = await ComeThroughPlugin.loadPluginData(this);
 
@@ -44,8 +45,9 @@ export default class ComeThroughPlugin extends Plugin {
 				this.latestPluginDataRef.settings = settings;
 				await this.savePluginData();
 			},
-			this.onSettingsSaved.bind(this)
+			this.onSettingsSaved
 		);
+		DomState.init(this, document);
 
 		this.dataStore = new DataStore(this.latestPluginDataRef.data, this.latestPluginDataRef.settings.removedItemsPurgeThreshold, async (data) => {
 			this.latestPluginDataRef.data = data;
@@ -101,22 +103,19 @@ export default class ComeThroughPlugin extends Plugin {
 		this.addCommand(ReviewViewCommand.toggleInlineInfo(this.app));
 		this.addCommand(ReviewViewCommand.navigateToSourceFile(this.app));
 
-		this.addCommand({
-			id: 'generate-id-cursor',
-			name: t.commands.generateId.name,
-			editorCallback: (editor: Editor, _view: MarkdownView) => {
-				editor.replaceRange(UniqueID.generateID(), editor.getCursor())
-			}
-		});
+		this.addCommand(EditorCommand.generateId());
+		this.addCommand(EditorCommand.insertReviewUnit(false));
+		this.addCommand(EditorCommand.insertReviewUnit(true));
 	}
 
-	public onunload() {
-		if (this.confirmationModal)
+	public override onunload() {
+		DomState.deinit();
+		if (this.confirmationModal !== null)
 			this.confirmationModal.forceClose();
 	}
 
 	/** This is triggered when the data file is modified by an external source, such as a sync service. */
-	public async onExternalSettingsChange() {
+	public override async onExternalSettingsChange() {
 		Env.log.d("Plugin:onExternalSettingsChange");
 
 		const overwrittenDataOnDisk = await ComeThroughPlugin.loadPluginData(this);
@@ -152,9 +151,9 @@ export default class ComeThroughPlugin extends Plugin {
 					if (info.activeChanged || info.collectionsChanged) {
 
 						// Prevent multiple modals opening (as external changes might occur while the modal is showing).
-						if (!this.confirmationModal) {
+						if (this.confirmationModal === null) {
 							this.confirmationModal = new ConfirmationModal(this.app);
-							this.confirmationModal.onClosed = () => this.confirmationModal = undefined;
+							this.confirmationModal.onClosed = () => this.confirmationModal = null;
 							this.confirmationModal.open();
 						}
 
@@ -172,7 +171,7 @@ export default class ComeThroughPlugin extends Plugin {
 			);
 		});
 	}
-	private confirmationModal?: ConfirmationModal;
+	private confirmationModal: ConfirmationModal | null = null;
 
 	// public onUserEnable(): void {}
 
@@ -182,10 +181,10 @@ export default class ComeThroughPlugin extends Plugin {
 	 */
 	private registerEvents() {
 
-		this.registerEvent(this.app.workspace.on("file-open", this.syncManager.open.bind(this.syncManager)));
-		this.registerEvent(this.app.metadataCache.on("changed", this.syncManager.changed.bind(this.syncManager)));
-		this.registerEvent(this.app.vault.on("delete", this.syncManager.delete.bind(this.syncManager)));
-		this.registerEvent(this.app.vault.on("rename", this.syncManager.rename.bind(this.syncManager)));
+		this.registerEvent(this.app.workspace.on("file-open", this.syncManager.open));
+		this.registerEvent(this.app.metadataCache.on("changed", this.syncManager.changed));
+		this.registerEvent(this.app.vault.on("delete", this.syncManager.delete));
+		this.registerEvent(this.app.vault.on("rename", this.syncManager.rename));
 
 		this.registerEvent(this.app.workspace.on("file-menu", (menu, file, source, _leaf) => {
 			if (!(file instanceof TFile))
@@ -236,17 +235,18 @@ export default class ComeThroughPlugin extends Plugin {
 		await this.saveData(this.latestPluginDataRef);
 	}
 
-	private onSettingsSaved(changedInfo?: SettingsChangedInfo) {
+	private onSettingsSaved = (changedInfo?: SettingsChangedInfo) => {
 		switch (changedInfo) {
 			case "schedulerConfig":
 				this.scheduler.reconfigure(this.createSchedulerConfig());
 				break;
+			case undefined:
+				break;
 		}
-	}
+	};
 
 	private createSchedulerConfig() {
 		const config = this.settingsManager.defaultScheduler.config;
-		Env.assert(config);
 		return {
 			enableFuzz: config.enableFuzz,
 		} satisfies FsrsSchedulerConfig;

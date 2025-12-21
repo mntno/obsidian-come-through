@@ -1,13 +1,18 @@
-import { DeclarationRenderable, DeclarationRenderAssistant, DeclarationRenderer } from "renderings/declarations/DeclarationRenderable";
-import { Declarable } from "declarations/Declaration";
+import { DeclarationRenderable, DeclarationRenderAssistant } from "#/renderings/declarations/DeclarationRenderable";
+import { YamlObject } from "#/declarations/DeclarationCodec";
 
 
 export class DeclarationErrorRenderer
-	extends DeclarationRenderer<Declarable>
 	implements DeclarationRenderable {
 
 	public method?: (r: DeclarationRenderAssistant, errorMessage?: string) => void;
 	public errorMessage?: string;
+
+	private declaration: YamlObject;
+
+	constructor(declaration: YamlObject) {
+		this.declaration = declaration;
+	}
 
 	public render(r: DeclarationRenderAssistant) {
 		r.setError();
@@ -20,12 +25,12 @@ export class DeclarationErrorRenderer
 		}
 	}
 
-	public static invalidCardDeclaration(r: DeclarationRenderAssistant, errorMessage?: string) {
+	public static invalidCardDeclaration(r: DeclarationRenderAssistant, _errorMessage?: string) {
 		r.setTitle("Invalid card declaration");
 		r.addParagraph("Please check entered keys and values.");
 	}
 
-	public static invalidCommandDeclaration(r: DeclarationRenderAssistant, errorMessage?: string) {
+	public static invalidCommandDeclaration(r: DeclarationRenderAssistant, _errorMessage?: string) {
 		r.setTitle("Invalid declaration command");
 		r.addParagraph("Please check the entered values.");
 	}

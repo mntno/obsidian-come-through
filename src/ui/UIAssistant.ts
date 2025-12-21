@@ -1,17 +1,10 @@
-import { DeckIDDataTuple } from "data/DataStore";
-import { DeckID } from "data/FullID";
 import { App, MarkdownView, Menu, MenuItem, Notice } from "obsidian";
 import { SettingsManager } from "Settings";
-import { Icon, PLUGIN_NAME } from "ui/constants";
+import { Icon } from "ui/constants";
+import { Str } from "utils/ts";
 
 
 export class UIAssistant {
-
-  /**
-   * Deck ID to use to represent unassigned deck when a string is required to identify UI elements.
-   * For example string values in DOM elements.
-   */
-  public static readonly DECK_ID_NONE: DeckID = "0000";
 
   private settingsManager: SettingsManager;
 
@@ -21,10 +14,7 @@ export class UIAssistant {
 
   public contextulize(title: string) {
     const contextPrefix = this.settingsManager.settings.uiPrefix;
-    if (contextPrefix !== undefined)
-      return contextPrefix ? `${contextPrefix}: ${title}` : title;
-    else
-      return `${PLUGIN_NAME}: ${title}`;
+    return Str.isNonEmpty(contextPrefix) ? `${contextPrefix}: ${title}` : title;
   }
 
   public addMenuItem(menu: Menu, title: string, options?: {
@@ -33,8 +23,8 @@ export class UIAssistant {
     icon?: string,
     prefix?: boolean,
     isLabel?: boolean,
-    onClick?: (evt: MouseEvent | KeyboardEvent) => any
-    callback?: (item: MenuItem) => any,
+    onClick?: (evt: MouseEvent | KeyboardEvent) => void,
+    callback?: (item: MenuItem) => void,
   }): Menu {
     const {
       callback,
@@ -42,7 +32,7 @@ export class UIAssistant {
 
     menu.addItem(item => {
       this.configureMenuItem(item, title, options);
-      callback?.(item);
+			callback?.(item);
     });
 
     return menu;
@@ -54,7 +44,7 @@ export class UIAssistant {
     icon?: string,
     prefix?: boolean,
     isLabel?: boolean,
-    onClick?: (evt: MouseEvent | KeyboardEvent) => any
+    onClick?: (evt: MouseEvent | KeyboardEvent) => void,
   }): MenuItem {
     const {
       section,
@@ -103,21 +93,11 @@ export class UIAssistant {
     return notice;
   }
 
-  public static allDecksOptionItem(): DeckIDDataTuple {
-    return {
-      id: UIAssistant.DECK_ID_NONE,
-      data: {
-        n: "All Decks",
-        p: []
-      }
-    };
-  }
-
   public static isInInLivePreview(app: App) {
     const markdownView = app.workspace.getActiveViewOfType(MarkdownView)
     if (!markdownView)
       return false;
     const state = markdownView.getState();
-    return state ? state.mode == "source" && state.source == false : false;
+    return state["mode"] == "source" && state["source"] == false;
   }
 }

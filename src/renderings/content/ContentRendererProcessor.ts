@@ -1,6 +1,6 @@
 import { Env } from "env";
 import { App, Component } from "obsidian";
-import { getDoc } from "utils/obs/dom";
+import { Doc } from "utils/dom/dom";
 
 export type MediaContentProcessorConfig = {
 	preventMultiplePlayback: boolean;
@@ -74,7 +74,7 @@ export class ContentRendererPostProcessorAssistant {
 	}
 
 	public get doc() {
-		return getDoc(this.param.el);
+		return Doc.get(this.param.el);
 	}
 
 	public get el() {

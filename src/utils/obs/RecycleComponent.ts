@@ -21,19 +21,19 @@ export abstract class RecycleComponent extends Component {
 		return super.addChild(component);
 	}
 
-  public override removeChild<T extends Component>(component: T): T {
-  	Env.assert(false);
+	public override removeChild<T extends Component>(component: T): T {
+		Env.assert(false);
 		return super.removeChild(component);
-  }
+	}
 
 	/**
 		* The {@link recycleComponent} was loaded.
 		* Create and add children here.
 		*/
-	protected onRecycled(component: Component): void {};
+	protected onRecycled(component: Component): void { }; // eslint-disable-line @typescript-eslint/no-unused-vars
 
 	/** The {@link recycleComponent} is about to unload. */
-	protected onRecycling(): void {};
+	protected onRecycling(): void { };
 
 	protected get recycleComponent() {
 		return this.internalRecycleComponent!;
@@ -46,15 +46,12 @@ export abstract class RecycleComponent extends Component {
 
 	private create(): void {
 		this.internalRecycleComponent = new Component();
-
-		if (this.internalRecycleComponent) {
-			this.internalRecycleComponent.load();
-			this.onRecycled(this.internalRecycleComponent);
-		}
+		this.internalRecycleComponent.load();
+		this.onRecycled(this.internalRecycleComponent);
 	}
 
 	private dispose(): void {
-		if (this.internalRecycleComponent) {
+		if (this.internalRecycleComponent !== null) {
 			this.onRecycling();
 			// Clears its internal list of children and deregisters all its resources. The component is disposed and should no longer be used.
 			this.internalRecycleComponent.unload();

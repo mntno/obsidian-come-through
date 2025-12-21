@@ -84,17 +84,3 @@ export function createElWrapperHtml<K extends keyof HTMLElementTagNameMap>(tag: 
 	else
 		return `<div class="${CssClass.wrapperClassForEl(tag)}">${html}</div>`;
 }
-
-/**
-	* Use `element.win` and `element.doc` to get the window/document that your Dom element is located in.
-	*
-	* `activeWindow`/`Document` refers to the current focused window which might not be the same one your element is in.
-	*/
-export function getDoc(el: HTMLElement) {
-	return el.doc;
-}
-
-/** @see {@link getDoc} */
-export function getWin(el: HTMLElement) {
-	return el.win;
-}

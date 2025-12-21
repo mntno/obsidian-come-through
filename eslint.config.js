@@ -32,10 +32,9 @@ export default defineConfig(
 		languageOptions: {
 			parser: tseslint.parser,
 			parserOptions: {
-				project: "./tsconfig.json",
-				projectService: "true",
+				projectService: true,
 				sourceType: "module",
-				ecmaVersion: "latest",
+				ecmaVersion: 2022,
 			},
 			globals: {
 				...globals.browser,
@@ -46,22 +45,34 @@ export default defineConfig(
 			}
 		},
 		rules: {
+			// You should always have "no-unused-vars": "off" alongside @typescript-eslint/no-unused-vars,
+			// https://typescript-eslint.io/rules/no-unused-vars/
 			"no-unused-vars": "off",
-			"@typescript-eslint/no-unused-vars": ["warn", {
-				args: "none"
+			"@typescript-eslint/no-unused-vars": ["error", {
+			    "args": "all",
+			    "argsIgnorePattern": "^_",
+			    "caughtErrors": "all",
+			    "caughtErrorsIgnorePattern": "^_",
+			    "destructuredArrayIgnorePattern": "^_",
+			    "varsIgnorePattern": "^_",
+			    "ignoreRestSiblings": true,
 			}],
+
+			//
 			"@typescript-eslint/ban-ts-comment": ["error", {
 				"ts-expect-error": false,
 				"ts-ignore": true,
 				"ts-nocheck": true,
 				"ts-check": true,
 			}],
+
 			"no-prototype-builtins": "off",
 			"@typescript-eslint/no-empty-function": "off",
 			"@typescript-eslint/no-unnecessary-condition": ["warn", {
 				// https://typescript-eslint.io/rules/no-unnecessary-condition/#only-allowed-literals
 				"allowConstantLoopConditions": "only-allowed-literals"
 			}],
+			"@typescript-eslint/switch-exhaustiveness-check": "error",
 		},
 	},
 );

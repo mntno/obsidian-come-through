@@ -8,6 +8,10 @@ export class DecksView extends BaseView<BaseViewState> {
 
 	public static readonly TYPE = "come-through-view-decks";
 
+	public static createViewState(): BaseViewState {
+		return BaseView.withDefaultViewState({});
+	}
+
 	private readonly data: DataStore;
 
 	constructor(leaf: WorkspaceLeaf, settingsManager: SettingsManager, data: DataStore) {
@@ -29,7 +33,7 @@ export class DecksView extends BaseView<BaseViewState> {
 		return "Decks";
 	}
 
-	protected override onSetState(state: BaseViewState, result: ViewStateResult): void {
+	protected override onSetState(_state: BaseViewState, _result: ViewStateResult): void {
 	}
 
 	protected override onGetState(): BaseViewState {
@@ -78,7 +82,7 @@ export class DecksView extends BaseView<BaseViewState> {
 						el.createEl("button", { text: "Add" }, (button) => {
 							setIcon(button, "plus");
 							setTooltip(button, "Add new deck");
-							this.contentRenderer.registerDomEvent(button, "click", () => new DeckModal(this.app, this.data, () => { }).open());
+							this.contentRenderer.registerDomEvent(button, "click", () => DeckModal.add(this.app, this.data));
 						});
 					});
 				});
@@ -105,7 +109,7 @@ export class DecksView extends BaseView<BaseViewState> {
 									menu.addItem((item) => {
 										item.setTitle("Edit");
 										item.setIcon("pen");
-										item.onClick(() => new DeckModal(this.app, this.data, () => { }, deck.id).open());
+										item.onClick(() => DeckModal.edit(this.app, this.data, deck.id));
 									});
 
 									menu.addItem((item) => {

@@ -1,20 +1,32 @@
-import { CommandableDeclarable } from "declarations/CommandDeclaration";
-import { CommandDeclarationParsable, CommandDeclarationParser } from "declarations/CommandDeclarationParser";
-import { HeadingsCommandableAssistant, HeadingsCommandableDeclarable, HeadingsDeclarationParser } from "declarations/commands/HeadingsCommandable";
-import { CacheItem, HeadingCache, Loc } from "obsidian";
+import { CommandableDeclarable } from "#/declarations/Commandable";
+import { CommandDeclarationParsable } from "#/declarations/CommandDeclarationParser";
+import { CommandName, Commands } from "#/declarations/CommandNames";
+import { HeadingsCommandableAssistant, HeadingsCommandableDeclarable, HeadingsDeclarationParser } from "#/declarations/commands/HeadingsCommandable";
+import { IDScope } from "#/declarations/ExplicitDeclaration";
+import { CacheItem, Loc } from "obsidian";
 
-export interface HeadingIsFrontDeclarable extends HeadingsCommandableDeclarable { }
-
-export class HeadingIsFrontAssistant extends HeadingsCommandableAssistant {
-	public static tryCreateParser(commandable: CommandableDeclarable): CommandDeclarationParsable | null {
-		return (
-			HeadingIsFrontAssistant.conforms<HeadingIsFrontDeclarable>(commandable) &&
-			HeadingIsFrontAssistant.isValid(commandable)
-		) ? new HeadingIsFrontParser(commandable) : null;
-	}
+export interface HeadingIsFrontDeclarable extends HeadingsCommandableDeclarable { // eslint-disable-line @typescript-eslint/no-empty-object-type
 }
 
+/** Helpers related to {@link HeadingIsFrontDeclarable}. */
+export class HeadingIsFrontAssistant extends HeadingsCommandableAssistant {
+
+	public static override is(value: unknown): value is HeadingIsFrontDeclarable {
+		if (!HeadingsCommandableAssistant.is(value))
+			return false;
+
+		return (Commands.Name.HeadingIsFront as readonly CommandName[]).includes(value.name);
+	}
+}
+const ThisAssistant = HeadingIsFrontAssistant;
+
 export class HeadingIsFrontParser extends HeadingsDeclarationParser<HeadingIsFrontDeclarable> {
+
+	public static tryCreate(declarable: CommandableDeclarable): CommandDeclarationParsable | null {
+		if (ThisAssistant.is(declarable) && ThisAssistant.isValid(declarable))
+			return new this(declarable);
+		return null;
+	}
 
 	public parse(parentHeadingLevel: number, inBetweenDelimiter: CacheItem, index: number, delimiters: CacheItem[]) {
 		if (!HeadingIsFrontParser.isHeadingCache(inBetweenDelimiter))
@@ -24,7 +36,15 @@ export class HeadingIsFrontParser extends HeadingsDeclarationParser<HeadingIsFro
 		if (!this.isOnSpecifiedLevel(parentHeadingLevel, inBetweenDelimiter))
 			return;
 
-		const id = inBetweenDelimiter.heading;
+		let id = inBetweenDelimiter.heading;
+		let idScope: IDScope = IDScope.Note;
+
+		const uniqueID = this.tryParseUniqueID(inBetweenDelimiter.heading);
+		if (uniqueID !== null) {
+			id = uniqueID;
+			idScope = IDScope.Unique;
+		}
+
 		const startLocation: Loc = {
 			line: inBetweenDelimiter.position.start.line,
 			col: inBetweenDelimiter.position.start.col,
@@ -50,7 +70,9 @@ export class HeadingIsFrontParser extends HeadingsDeclarationParser<HeadingIsFro
 					start: endLocation,
 					end: endLocation,
 				}
-			});
+			},
+			idScope,
+		);
 
 		this.generateDeclaration(
 			id,
@@ -61,7 +83,8 @@ export class HeadingIsFrontParser extends HeadingsDeclarationParser<HeadingIsFro
 					end: endLocation,
 				}
 			},
-			HeadingIsFrontParser.findNextHeading(inBetweenDelimiter.level, index, delimiters)
+			HeadingsDeclarationParser.findNextHeading(inBetweenDelimiter.level, index, delimiters),
+			idScope,
 		);
 	}
 }

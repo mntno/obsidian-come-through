@@ -1,17 +1,21 @@
-import { CardDeclarationAssistant } from "declarations/CardDeclaration";
-import { CommandDeclarationAssistant } from "declarations/CommandDeclaration";
-import { Declaration } from "declarations/Declaration";
-import { Env } from "env";
+import { CommandableAssistant } from "#/declarations/Commandable";
+import { DeclarableAssistant } from "#/declarations/Declarable";
+import { DeclarationCodec } from "#/declarations/DeclarationCodec";
+import { Env } from "#/env";
+import { DeclarationErrorRenderer } from "#/renderings/declarations/DeclarationErrorRenderer";
+import { DataProvider, DeclarationChangedEvent, DeclarationRenderAssistant } from "#/renderings/declarations/DeclarationRenderable";
+import { RendererRegistry } from "#/renderings/RendererRegistry";
+import { Icon } from "#/ui/constants";
 import { MarkdownRenderChild, setIcon } from "obsidian";
-import { AlternateHeadingsRenderer } from "renderings/declarations/AlternateHeadingsRenderer";
-import { CardDeclarationRenderer } from "renderings/declarations/CardDeclarationRenderer";
-import { DeclarationErrorRenderer } from "renderings/declarations/DeclarationErrorRenderer";
-import { DataProvider, DeclarationChangedEvent, DeclarationRenderable, DeclarationRenderAssistant } from "renderings/declarations/DeclarationRenderable";
-import { HeadingAndDelimiterRenderer } from "renderings/declarations/HeadingAndDelimiterRenderer";
-import { HeadingIsFrontRenderer } from "renderings/declarations/HeadingIsFrontRenderer";
-import { Icon } from "ui/constants";
 
 export class DeclarationRenderChild extends MarkdownRenderChild {
+
+	private source: string;
+	private dataProvider: DataProvider;
+
+	private titleContainer!: HTMLDivElement;
+	private titleEl!: HTMLDivElement;
+	private contentContainerEl!: HTMLDivElement;
 
 	public constructor(containerEl: HTMLElement, source: string, dataProvider: DataProvider) {
 		super(containerEl);
@@ -20,24 +24,30 @@ export class DeclarationRenderChild extends MarkdownRenderChild {
 		this.dataProvider = dataProvider;
 	}
 
+	public override onload(): void {
+		Env.log.d("DeclarationRenderChild:onload");
+		super.onload();
+
+		// Manual cleanup for these elements in `onunload` is not necessary because they are added directly
+		// to `containerEl`, which is managed and eventually discarded by the base class.
+		this.containerEl.addClass("callout");
+
+		this.titleContainer = this.containerEl.createDiv({ cls: "callout-title" });
+		this.titleContainer.createDiv({ cls: "callout-icon" }, (icon) => setIcon(icon, Icon.PLUGIN));
+		this.titleEl = this.titleContainer.createDiv({ cls: "callout-title-inner" });
+
+		this.contentContainerEl = this.containerEl.createDiv({ cls: "callout-content" });
+	}
+
 	public override onunload(): void {
 		Env.log.d("DeclarationRenderChild:onunload");
 		super.onunload();
 	}
 
-	private contentContainerEl: HTMLDivElement;
-	private source: string;
-	private dataProvider: DataProvider;
-
-	private titleContainer: HTMLDivElement;
-	private titleEl: HTMLDivElement;
-
 	/**
 		* @param onDomEvent DOM event registered with rendered elements such as buttons or select.
 		*/
 	public render(onDomEvent: DeclarationChangedEvent) {
-
-		this.initRender();
 
 		const r = new DeclarationRenderAssistant(
 			this.containerEl,
@@ -49,48 +59,26 @@ export class DeclarationRenderChild extends MarkdownRenderChild {
 			onDomEvent
 		);
 
-		const declaration = Declaration.tryParseYaml(this.source, error => this.renderYamlError(r, error.message));
-		if (declaration === null)
+		const declaration = DeclarationCodec.tryFromYaml(this.source, error => this.renderYamlError(r, error.message));
+		if (declaration === null || !DeclarableAssistant.is(declaration))
 			return;
 
-		let declarationRenderer: DeclarationRenderable = new DeclarationErrorRenderer(declaration);
+		let declarationRenderer = RendererRegistry.tryCreate(declaration);
 
-		if (CommandDeclarationAssistant.conforms(declaration)) {
+		if (declarationRenderer === null) {
+			const errorRenderer = new DeclarationErrorRenderer(declaration);
 
-			if (CommandDeclarationAssistant.isNameValid(declaration)) {
-				if (CommandDeclarationAssistant.isHeadingAndDelimiter(declaration))
-					declarationRenderer = new HeadingAndDelimiterRenderer(declaration);
-				else if (CommandDeclarationAssistant.isAlternateHeadings(declaration))
-					declarationRenderer = new AlternateHeadingsRenderer(declaration);
-				else if (CommandDeclarationAssistant.isHeadingIsFront(declaration))
-					declarationRenderer = new HeadingIsFrontRenderer(declaration);
+			if (CommandableAssistant.is(declaration)) {
+				errorRenderer.method = DeclarationErrorRenderer.unknownCommandName;
+				errorRenderer.errorMessage = `Name: ${declaration.name}`;
+			} else {
+				errorRenderer.method = DeclarationErrorRenderer.invalidCardDeclaration;
 			}
 
-			if (declarationRenderer instanceof DeclarationErrorRenderer) {
-				declarationRenderer.method = DeclarationErrorRenderer.unknownCommandName;
-				declarationRenderer.errorMessage = `Name: ${declaration.name}`;
-			}
-		}
-		else {
-			if (CardDeclarationAssistant.conformsToDefaultable(declaration))
-				declarationRenderer = new CardDeclarationRenderer(declaration);
-
-			if (declarationRenderer instanceof DeclarationErrorRenderer)
-				declarationRenderer.method = DeclarationErrorRenderer.invalidCardDeclaration;
+			declarationRenderer = errorRenderer;
 		}
 
 		declarationRenderer.render(r);
-	}
-
-	private initRender() {
-		this.containerEl.addClass("callout");
-
-		this.titleContainer = this.containerEl.createDiv({ cls: "callout-title" });
-		this.titleContainer.createDiv({ cls: "callout-icon" }, (icon) => setIcon(icon, Icon.PLUGIN));
-		this.titleEl = this.titleContainer.createDiv({ cls: "callout-title-inner" });
-
-		this.contentContainerEl = this.containerEl.createDiv({ cls: "callout-content" });
-		return this.contentContainerEl;
 	}
 
 	private renderYamlError(r: DeclarationRenderAssistant, errorMessage?: string) {

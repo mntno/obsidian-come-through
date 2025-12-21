@@ -5,7 +5,7 @@ import { deepEqual, strictDeepEqual } from 'fast-equals';
 import { asNoteID, isDate, isString } from "TypeAssistant";
 import { DateTime } from "utils/datetime";
 import { UnexpectedUndefinedError } from "utils/errors";
-import { Obj, Str } from "utils/ts";
+import { Arr, Obj, Str } from "utils/ts";
 
 export interface DataStoreRoot {
 	decks: DecksData;
@@ -15,7 +15,7 @@ export interface DataStoreRoot {
 
 type DecksData = Record<DeckID, DeckData>;
 
-interface DeckData {
+export interface DeckData {
 	/** Name of the deck */
 	n: string;
 	/** Parent decks */
@@ -202,6 +202,10 @@ export class DeckEditor {
 /** Use with {@link DataStore.registerOnChangedCallback} */
 export type DataChanged = (data: DataStoreRoot) => void;
 
+type DataSection = Exclude<keyof DataStoreRoot, "decks"> | "all";
+/** See {@link DataStore.Internal.dispatchSection}. */
+type SectionActions<R> = { [K in DataSection]: () => R; };
+
 export class DataStore {
 
 	public static readonly DEFAULT_DATA: DataStoreRoot = {
@@ -222,6 +226,8 @@ export class DataStore {
 	}
 
 	public cardInfo(id: FullID) {
+		Env.log.data("DataStore:cardInfo: id", id);
+
 		let info = `${id.isFrontSide ? "front" : "back"} of ${id.cardID}`
 
 		const card = this.getCard(id);
@@ -234,7 +240,7 @@ export class DataStore {
 		const decks: DeckData[] = [];
 		for (const deckID of card.d) {
 			const deckData = this.getDeck(deckID);
-			console.assert(deckData);
+			console.assert(deckData !== null);
 			if (deckData !== null)
 				decks.push(deckData);
 		}
@@ -248,7 +254,7 @@ export class DataStore {
 		* @param cb Return value is ignored.
 		*/
 	public createDeck(cb: (editor: DeckEditor) => unknown): DeckIDDataTuple {
-
+		Env.log.data("DataStore:createDeck");
 		const editor = new DeckEditor(UniqueID.generateID(), {
 			n: "",
 			p: [],
@@ -261,18 +267,25 @@ export class DataStore {
 	}
 
 	public editCard(id: FullID, cb: (editor: CardEditor) => boolean) {
+		Env.log.data("DataStore:editCard: id", id);
 		const data = this.getCard(id, true);
 		if (data && cb(new CardEditor(id, data)))
 			this.setDataDirty();
 	}
 
-	public editDeck(id: DeckID, cb: (editor: DeckEditor) => boolean) {
-		const data = this.getDeck(id, true);
-		if (data && cb(new DeckEditor(id, data)))
+	/**
+		* @returns `null` if {@link id} was not found and {@link cb} was not called. If the {@link id} was found, the {@link DeckData} is returned regardless of whether {@link cb} was called.
+		*/
+	public editDeck(id: DeckID, cb: (editor: DeckEditor) => boolean, throwIfNotFound = false): DeckData | null {
+		Env.log.data("DataStore:editDeck: id", id);
+		const data = this.getDeck(id, throwIfNotFound);
+		if (data !== null && cb(new DeckEditor(id, data)))
 			this.setDataDirty();
+		return data;
 	}
 
 	public getDeck(id: DeckID, throwIfNotFound = false): DeckData | null {
+		Env.log.data("DataStore:getDeck: id", id);
 		const data = this.data.decks[id] ?? null;
 		if (data === null && throwIfNotFound)
 			throw new Error(`Deck with ID "${id}" was not found.`);
@@ -280,6 +293,7 @@ export class DataStore {
 	}
 
 	public deleteDeck(idToDelete: DeckID, moveChildrenToID?: DeckID, throwIfNotFound = false) {
+		Env.log.data("DataStore:deleteDeck: idToDelete", idToDelete, "moveChildrenToID", moveChildrenToID);
 		const data = this.getDeck(idToDelete, throwIfNotFound);
 		if (!data)
 			return null;
@@ -312,7 +326,7 @@ export class DataStore {
 		const {
 			predicate,
 		} = options || {};
-
+		Env.log.data("DataStore:getAllDecks: predicate", predicate);
 		const decks: DeckIDDataTuple[] = [];
 
 		for (const [id, data] of Object.entries(this.data.decks)) {
@@ -336,12 +350,13 @@ export class DataStore {
 	* @returns The removed {@link CardData}, or `null` if {@link id} was not found.
 	*/
 	private deleteRemovedCard(id: FullID, throwIfNotFound = false) {
+		Env.log.data("DataStore:deleteRemovedCard: id", id);
 		const removedCard = this.getRemovedCard(id, throwIfNotFound);
 		if (!removedCard)
 			return null;
 
 		const removedNoteData = this.getRemovedNote(id.noteID, throwIfNotFound);
-		Env.assert(removedNoteData);
+		Env.assert(removedNoteData !== null);
 		if (removedNoteData === null)
 			return null;
 
@@ -349,7 +364,7 @@ export class DataStore {
 		this.setDataDirty();
 
 		if (StatisticsHelper.isRemovedNoteEmpty(removedNoteData))
-			this.deleteRemovedNote(id.noteID, throwIfNotFound);
+			this.deleteNote("removed", id.noteID, throwIfNotFound);
 
 		return removedCard;
 	}
@@ -358,11 +373,12 @@ export class DataStore {
 	 * @param removedBeforeDate Delete only items that were removed before this date. Set to `undefined` to delete all items.
 	 */
 	private deleteRemovedCards(removedBeforeDate?: Date) {
-		if (removedBeforeDate) {
+		Env.log.data("DataStore:deleteRemovedCards: removedBeforeDate", removedBeforeDate);
+		if (removedBeforeDate !== undefined) {
 			const time = removedBeforeDate.getTime();
 			this.getAllRemovedCards(undefined, (_cardID: CardID, data: RemovedCardData) => {
 				const date = StatisticsHelper.ensureDate(data.date);
-				Env.dev?.assert(date, "Expected date parsable string.");
+				Env.dev?.assert(date !== null, "Expected date parsable string.");
 				return date && date.getTime() < time ? true : false;
 			}).forEach(tuple => this.deleteRemovedCard(tuple.id));
 		}
@@ -380,18 +396,31 @@ export class DataStore {
 	 * @param throwIfExists If card already exist as active.
 	 */
 	private ensureActiveCard(id: FullID, statisticsFactory: () => StatisticsData, throwIfExists = false) {
+		Env.log.data("DataStore:ensureActiveCard: id", id);
 
-		const removedCard = this.getAllRemovedCards(
-			undefined, //(noteID, _) => id.hasNoteID(noteID),
+		// First check if already active in any note.
+		// - Prevents dublicates, e.g., it the removal event occurs after the add event.
+		const existingActive = Arr.firstOrNull(this.getAllCards((cardID, _) => id.hasCardID(cardID)));
+		if (existingActive !== null) {
+			if (existingActive.id.hasNoteID(id.noteID)) {
+				if (throwIfExists)
+					throw new CardAlreadyExistsError(id, [existingActive.id]);
+				return existingActive.data;
+			}
+			return this.moveActiveCard(existingActive.id, id.noteID);
+		}
+
+		// Check removed
+		const removed = Arr.firstOrNull(this.getAllRemovedCards(undefined,
 			(cardID, _) => id.hasCardID(cardID) // For unique IDs. They can be in different notes. Just match on the hash.
-		).first();
+		));
 
 		this.createActiveNote(id, false);
 		let cardToAdd: CardIDDataTuple;
 
-		if (removedCard) {
-			this.deleteRemovedCard(removedCard.id, true);
-			cardToAdd = StatisticsHelper.toCardIDDataTuple(id, StatisticsHelper.removedCardToCard(removedCard.data));
+		if (removed !== null) {
+			this.deleteRemovedCard(removed.id, true);
+			cardToAdd = StatisticsHelper.toCardIDDataTuple(id, StatisticsHelper.removedCardToCard(removed.data));
 		}
 		else {
 			const deckIDs = id instanceof DeckableFullID ? id.deckIDs : [];
@@ -410,7 +439,7 @@ export class DataStore {
 	 * @returns The created card or `null` if already existed.
 	 */
 	private addAsActiveCard(card: CardIDDataTuple, throwIfExists = false) {
-
+		Env.log.data("DataStore:addAsActiveCard: card", card);
 		if (this.getCard(card.id, false) !== null) {
 			if (throwIfExists)
 				throw new CardAlreadyExistsError(card.id, []);
@@ -432,6 +461,7 @@ export class DataStore {
 	 * @returns Returns the note, whether it was created or not.
 	 */
 	private ensureActiveNote(id: FullID) {
+		Env.log.data("DataStore:ensureActiveNote: id", id);
 		return this.createActiveNote(id, false) ?? this.getNote(id.noteID, true)!;
 	}
 
@@ -439,6 +469,7 @@ export class DataStore {
 	* Returns existing {@link RemovedNoteData} from {@link DataStoreRoot.removed} or creates and returns a new one if not found.
 	*/
 	private ensureRemovedNote(noteID: NoteID) {
+		Env.log.data("DataStore:ensureRemovedNote: noteID", noteID);
 		let note = this.getRemovedNote(noteID);
 		if (!note) {
 			note = StatisticsHelper.createRemovedNoteData();
@@ -454,6 +485,7 @@ export class DataStore {
 	 * @returns The created note or `null` if already existed.
 	 */
 	private createActiveNote(id: FullID, throwIfExists = false): NoteData | null {
+		Env.log.data("DataStore:createActiveNote: id", id);
 		id.throwIfNoNoteID()
 
 		if (this.getNote(id.noteID, false)) {
@@ -471,30 +503,55 @@ export class DataStore {
 	}
 
 	public removeNote(noteID: NoteID) {
+		Env.log.data("DataStore:removeNote: noteID", noteID);
 		return this.moveActiveNoteToRemoved(noteID);
 	}
 
 	public async removeAllCards() {
+		Env.log.data("DataStore:removeAllCards");
 		for (const [noteID, note] of Object.entries(this.data.active)) {
 			for (const cardID of Object.keys(note.cs))
 				this.moveActiveCardToRemoved(StatisticsHelper.createFullID(noteID, cardID));
 		}
 	}
 
-	private moveActiveCardToRemoved(id: FullID, throwIfNotFound = false) {
+	/**
+		* Move an active {@link CardData} to another note.
+		* @param id Item to move.
+		* @param toNoteID Target to move to.
+		* @param throwIfNotFound If set to `true`, throws an error if the card is not found in {@link id} or already exists in {@link toNoteID}.
+		* @returns `null` if item cannot be found or already exists in {@link toNoteID}.
+		*/
+	private moveActiveCard(id: FullID, toNoteID: NoteID, throwIfNotFound = false) {
+		Env.log.data("DataStore:moveActiveCard: id", id, "toNoteID", toNoteID);
+
 		const card = this.deleteActiveCard(id, throwIfNotFound);
-		if (!card)
-			return false;
+		if (card === null)
+			return null;
+
+		const newID = FullID.create(toNoteID, id.cardIDOrThrow(), id.isFrontSide);
+		return this.addAsActiveCard({ id: newID, data: card }, throwIfNotFound);
+	}
+
+	private moveActiveCardToRemoved(id: FullID, throwIfNotFound = false) {
+		Env.log.data("DataStore:moveActiveCardToRemoved: id", id);
+		const card = this.deleteActiveCard(id, throwIfNotFound);
+		if (card === null)
+			return null;
 
 		const removedNote = this.ensureRemovedNote(id.noteID);
-		removedNote.cs[id.cardIDOrThrow()] = StatisticsHelper.cardToRemovedCard(card);
+		const removedItem = StatisticsHelper.cardToRemovedCard(card);
+
+		removedNote.cs[id.cardIDOrThrow()] = removedItem;
 		this.setDataDirty();
-		return true;
+
+		return removedItem;
 	}
 
 	private moveActiveNoteToRemoved(noteID: NoteID, throwIfNotFound = false) {
-		const note = this.deleteActiveNote(noteID, throwIfNotFound);
-		if (!note)
+		Env.log.data("DataStore:moveActiveNoteToRemoved: noteID", noteID);
+		const note = this.deleteNote("active", noteID, throwIfNotFound);
+		if (note === null)
 			return false;
 
 		this.data.removed[noteID] = StatisticsHelper.noteToRemovedNote(note);
@@ -509,6 +566,7 @@ export class DataStore {
 	 * @returns The removed {@link CardData}, or `null` if {@link id} was not found.
 	 */
 	private deleteActiveCard(id: FullID, throwIfNotFound = false) {
+		Env.log.data("DataStore:deleteActiveCard: id", id);
 		id.throwIfNoCardID();
 
 		const note = this.getNote(id.noteID, throwIfNotFound);
@@ -521,41 +579,50 @@ export class DataStore {
 
 		delete note.cs[id.cardID];
 		if (StatisticsHelper.isNoteEmpty(note))
-			this.deleteActiveNote(id.noteID);
+			this.deleteNote("active", id.noteID);
 		this.setDataDirty();
 
 		return card;
 	}
 
 	/**
-	 * Deletes {@link NoteData} with {@link noteID} from {@link DataStoreRoot.active} and returns it.
-	 * @param noteID
-	 * @returns The removed {@link NoteData}, or `null` if {@link noteID} was not found.
-	 */
-	private deleteActiveNote(noteID: NoteID, throwIfNotFound = false) {
-		const note = this.getNote(noteID, throwIfNotFound);
-		if (note !== null) {
-			delete this.data.active[noteID];
-			this.setDataDirty();
-		}
-		return note;
-	}
+		* Deletes {@link NoteData} with {@link noteID} from {@link section} and returns it.
+		* @param section
+		* @param noteID
+		* @returns The removed {@link NoteData}, or `null` if {@link noteID} was not found.
+		*/
+	private deleteNote(section: DataSection, noteID: NoteID, throwIfNotFound = false): NoteData | null {
+		Env.log.data(`DataStore:deleteNote: section: ${section}, noteID: ${noteID}`);
 
-	/**
-	 * Deletes {@link NoteData} with {@link noteID} from {@link DataStoreRoot.removed} and returns it.
-	 * @param noteID
-	 * @returns The removed {@link NoteData}, or `null` if {@link noteID} was not found.
-	 */
-	private deleteRemovedNote(noteID: NoteID, throwIfNotFound = false) {
-		const note = this.getRemovedNote(noteID, throwIfNotFound);
-		if (note !== null) {
-			delete this.data.removed[noteID];
+		const actions: SectionActions<NoteData | null> = {
+			active: () => {
+				const n = this.getNote(noteID, section === "active" && throwIfNotFound); // Because `all` calls `active` first.
+				if (n !== null)
+					delete this.data.active[noteID];
+				return n;
+			},
+			removed: () => {
+				const n = this.getRemovedNote(noteID, throwIfNotFound);
+				if (n !== null)
+					delete this.data.removed[noteID];
+				return n;
+			},
+			all: () => {
+				const note = actions.active();
+				return note !== null ? note : actions.removed();
+			}
+		};
+
+		const note = DataStore.Internal.dispatchSection(section, actions);
+
+		if (note !== null)
 			this.setDataDirty();
-		}
+
 		return note;
 	}
 
 	public getCard(id: FullID, throwIfNotFound = false): CardData | null {
+		Env.log.data("DataStore:getCard: id", id);
 		id.throwIfNoNoteID();
 		id.throwIfNoCardID();
 
@@ -572,6 +639,7 @@ export class DataStore {
 	}
 
 	public getNote(noteID: NoteID, throwIfNotFound = false): NoteData | null {
+		Env.log.data("DataStore:getNote: noteID", noteID);
 		const note = this.data.active[noteID] ?? null;
 		if (note === null && throwIfNotFound)
 			throw new Error(`Note with ID "${noteID}" was not found.`);
@@ -588,6 +656,7 @@ export class DataStore {
 	 * @returns
 	 */
 	private getRemovedNote(noteID: NoteID, throwIfNotFound = false): RemovedNoteData | null {
+		Env.log.data("DataStore:getRemovedNote: noteID", noteID);
 		const note = this.data.removed[noteID] ?? null;
 		if (note === null && throwIfNotFound)
 			throw new Error(`Removed note with ID "${noteID}" was not found.`);
@@ -595,6 +664,7 @@ export class DataStore {
 	}
 
 	private getRemovedCard(id: FullID, throwIfNotFound = false): RemovedCardData | null {
+		Env.log.data("DataStore:getRemovedCard: id", id);
 		const note = this.getRemovedNote(id.noteID, throwIfNotFound);
 		if (!note)
 			return null;
@@ -611,8 +681,8 @@ export class DataStore {
 	 * @returns
 	 */
 	public getAllCardsForDeck(deckID?: DeckID): CardIDDataTuple[] {
-		Env.log.d("DataStore:getAllCardsForDeck:deckID", deckID);
-		Env.dev?.assert(deckID === undefined || isString(deckID) && deckID !== Env.str.EMPTY, deckID);
+		Env.log.data("DataStore:getAllCardsForDeck: deckID", deckID);
+		Env.dev?.assert(deckID === undefined || isString(deckID) && deckID !== Str.EMPTY, deckID);
 		if (deckID === undefined)
 			return this.getAllCards();
 
@@ -629,6 +699,7 @@ export class DataStore {
 	}
 
 	private descendantDecks(parentID?: DeckID): DeckIDDataTuple[] {
+		Env.log.data("DataStore:descendantDecks: parentID", parentID);
 		if (parentID === undefined)
 			return [];
 
@@ -645,13 +716,14 @@ export class DataStore {
 	}
 
 	public getAllCards(cardFilter?: (cardID: CardID, data: CardData) => boolean): CardIDDataTuple[] {
+		Env.log.data("DataStore:getAllCards");
 		return this.getAllCardsWithFilters(undefined, cardFilter);
 	}
 
 	private getAllCardsWithFilters(
 		noteFilter?: (noteID: NoteID, data: NoteData) => boolean,
 		cardFilter?: (cardID: CardID, data: CardData) => boolean): CardIDDataTuple[] {
-
+		Env.log.data("DataStore:getAllCardsWithFilters");
 		const cards: CardIDDataTuple[] = [];
 
 		for (const [noteID, note] of Object.entries(this.data.active)) {
@@ -668,6 +740,7 @@ export class DataStore {
 	}
 
 	public getAllNotes(noteFilter?: (noteID: NoteID, data: NoteData) => boolean): NoteID[] {
+		Env.log.data("DataStore:getAllNotes");
 		if (!noteFilter)
 			return Object.keys(this.data.active).map(k => asNoteID(k));
 		throw new Error("Not Implemented");
@@ -676,7 +749,7 @@ export class DataStore {
 	private getAllRemovedCards(
 		noteFilter?: (noteID: NoteID, data: RemovedNoteData) => boolean,
 		cardFilter?: (cardID: CardID, data: RemovedCardData) => boolean) {
-
+		Env.log.data("DataStore:getAllRemovedCards");
 		const cards: RemovedCardIDDataTuple[] = [];
 
 		for (const [noteID, removedData] of Object.entries(this.data.removed)) {
@@ -720,11 +793,11 @@ export class DataStore {
 	 * @returns `true` if the ID was changed successfully.
 	 */
 	public changeNoteID(oldID: NoteID, newID: NoteID, throwIfNotFound = false) {
-
+		Env.log.data("DataStore:changeNoteID: oldID", oldID, "newID", newID);
 		if (this.getNote(newID))
 			throw new Error(`Cannot overwrite ${newID}.`)
 
-		const deletedNote = this.deleteActiveNote(oldID, throwIfNotFound);
+		const deletedNote = this.deleteNote("active", oldID, throwIfNotFound);
 		if (deletedNote) {
 			this.data.active[newID] = deletedNote;
 			this.setDataDirty();
@@ -817,7 +890,7 @@ export class DataStore {
 	}
 
 	public async save() {
-		Env.log.d(`DataStore:save: dirty: ${this._isDataDirty}`);
+		Env.log.d("DataStore:save: dirty: ", this._isDataDirty);
 		if (this._isDataDirty) {
 			const purgeRemovedBeforeDate = new Date((new Date()).getTime() - (this.purgeThreshold * 1000));
 			this.deleteRemovedCards(purgeRemovedBeforeDate);
@@ -890,6 +963,7 @@ export class DataStore {
 	}
 
 	private triggerDataChanged() {
+		Env.log.data("DataStore:triggerDataChanged", this.registeredChangedCallbacks.length);
 		this.registeredChangedCallbacks.forEach(callback => {
 			try {
 				callback(this.data);
@@ -901,6 +975,23 @@ export class DataStore {
 	}
 
 	private registeredChangedCallbacks: DataChanged[] = [];
+
+	private static readonly Internal = {
+		dispatchSection: function <R>(section: DataSection, actions: SectionActions<R>): R {
+			switch (section) {
+				case "active":
+					return actions.active();
+				case "removed":
+					return actions.removed();
+				case "all":
+					return actions.all();
+				default: {
+					const _exhaustiveCheck: never = section;
+					throw new Error(`DataStore: Unhandled section: ${_exhaustiveCheck}`);
+				}
+			}
+		}
+	};
 
 	public readonly filter = {
 		cardsWithoutDeck: (card: CardIDDataTuple) => DataStore.Predicate.cardsInDeck(undefined)(card.id, card.data),

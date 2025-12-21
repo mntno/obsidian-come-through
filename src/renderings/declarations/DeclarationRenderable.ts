@@ -1,35 +1,63 @@
-import { DeckIDDataTuple } from "data/DataStore";
-import { DeckableDeclarable, Declarable } from "declarations/Declaration";
+import { DeckData, DeckIDDataTuple } from "#/data/DataStore";
+import { DeckID } from "#/data/FullID";
+import { DeckableDeclarable } from "#/declarations/Collectionable";
+import { Declarable } from "#/declarations/Declarable";
+import { HtmlTag } from "#/utils/dom/constants";
+import { TableCreator } from "#/utils/dom/table";
 import { Component, setIcon } from "obsidian";
-import { UIAssistant } from "ui/UIAssistant";
 
 export type DeclarationChangedType = "deckAdded" | "deckChanged";
 export type DeclarationChangedEvent = (declaration: DeckableDeclarable, type: DeclarationChangedType, selectEl: HTMLSelectElement) => void;
 
 export interface DataProvider {
 	getAllDecks: () => DeckIDDataTuple[];
+	getDeck: (id: DeckID) => DeckData | null;
 };
 
 export interface DeclarationRenderable {
 	render(r: DeclarationRenderAssistant): void;
 }
 
+export interface FactoryRegistryEntry {
+	names: readonly string[];
+	create: (d: unknown) => DeclarationRenderable | null;
+}
+
 export abstract class DeclarationRenderer<T extends Declarable> {
 	protected declarable: T;
-	public constructor(declarable: T) {
-		this.declarable = declarable;
-	}
+
+	public constructor(declarable: T) { this.declarable = declarable; }
+
+	/**
+		* @abstract
+		* @returns Whether the renderer can render the given value.
+		*/
+	public static canRender = (_value: unknown): boolean => { throw new Error("Not implemented"); }
+
+	public static readonly Factory = {
+		createEntry: <T extends Declarable>(
+			names: readonly string[],
+			RendererClass: {
+				new(declarable: T): DeclarationRenderable;
+				canRender(value: unknown): value is T;
+			}): FactoryRegistryEntry => {
+			return {
+				names,
+				create: (declarable) => RendererClass.canRender(declarable) ? new RendererClass(declarable) : null
+			};
+		}
+	};
 }
 
 export class DeclarationRenderAssistant {
 
-	private containerEl: HTMLElement;
-	protected contentContainerEl: HTMLDivElement;
-	private titleContainer: HTMLDivElement;
-	private titleEl: HTMLDivElement;
-	private component: Component;
-	private dataProvider: DataProvider;
-	protected onDomEvent: DeclarationChangedEvent
+	private readonly containerEl: HTMLElement;
+	private readonly contentContainerEl: HTMLDivElement;
+	private readonly titleContainer: HTMLDivElement;
+	private readonly titleEl: HTMLDivElement;
+	private readonly component: Component;
+	private readonly dataProvider: DataProvider;
+	private readonly onDomEvent: DeclarationChangedEvent;
 
 	public constructor(
 		containerEl: HTMLElement,
@@ -81,15 +109,19 @@ export class DeclarationRenderAssistant {
 		});
 	}
 
+	public createTable() {
+		return TableCreator.create(this.contentContainerEl);
+	}
+
 	public createDeckRow(body: HTMLTableSectionElement, declaration: DeckableDeclarable) {
 		const rowDeck = body.createEl("tr");
 		rowDeck.createEl("td", { text: "Deck" });
 		const tdDropdown = rowDeck.createEl("td", { cls: "select-deck-cell" });
 
-		const deckSelectEl = tdDropdown.createEl("select", { cls: "dropdown" }, (el) => {
-			el.createEl("option", {
+		const deckSelectEl = tdDropdown.createEl(HtmlTag.SELECT.NAME, { cls: "dropdown" }, (el) => {
+			el.createEl(HtmlTag.SELECT.OPTION.NAME, {
 				text: "None",
-				value: UIAssistant.DECK_ID_NONE,
+				value: HtmlTag.SELECT.OPTION.Values.NONE,
 			});
 		});
 
@@ -103,11 +135,11 @@ export class DeclarationRenderAssistant {
 		const decks = this.dataProvider.getAllDecks();
 		if (decks.length > 0) {
 			decks.forEach(deck => {
-				deckSelectEl.createEl("option", {
+				deckSelectEl.createEl(HtmlTag.SELECT.OPTION.NAME, {
 					text: deck.data.n,
 					value: deck.id,
 				}, (el) => {
-					el.selected = declaration?.deckID === deck.id;
+					el.selected = declaration.deckID === deck.id;
 				});
 			});
 			this.component.registerDomEvent(deckSelectEl, "change", () => this.onDomEvent(declaration, "deckChanged", deckSelectEl));
