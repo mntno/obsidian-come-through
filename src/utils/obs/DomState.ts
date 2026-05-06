@@ -10,6 +10,7 @@ interface Subscriber {
 	classes: string[] | null;
 }
 
+/** `app.workspace.on("css-change", cb…)` seem to only be called on theme change. */
 export class DomState {
 	private static observer: MutationObserver | null = null;
 	private static subscribers: Subscriber[] = [];
@@ -28,6 +29,7 @@ export class DomState {
 	public static deinit() {
 		Arr.clear(DomState.subscribers);
 		DomState.unobserve();
+		DomState.doc = undefined;
 	}
 
 	public static subscribe(callback: SettingsChangeCallback, classes: string[] | null = null) {

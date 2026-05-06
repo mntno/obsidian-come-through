@@ -21,9 +21,9 @@ export class DeclarationCodec {
 		let parsedObject: YamlObject | null = null;
 
 		try {
-			const raw = parseYaml(yaml);
+			const raw = Obj.try(parseYaml(yaml));
 
-			if (Obj.is(raw)) {
+			if (raw !== null) {
 				parsedObject = {};
 
 				for (const [key, value] of Object.entries(raw)) {

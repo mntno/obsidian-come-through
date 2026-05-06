@@ -104,6 +104,7 @@ Follow Obsidian's **Developer Policies** and **Plugin Guidelines**. In particula
 **Do**
 - Write idempotent code paths so reload/unload doesn't leak listeners or intervals.
 - Use `this.register*` helpers for everything that needs cleanup.
+- Preserve all existing comments, documentation, JSDoc blocks, and TODOs when modifying files.
 
 **Don't**
 - Introduce network calls without an obvious user-facing reason and documentation.

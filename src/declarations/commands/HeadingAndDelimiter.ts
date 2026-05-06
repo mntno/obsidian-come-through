@@ -3,8 +3,9 @@ import { CommandDeclarationParsable, CommandDeclarationParser } from "#/declarat
 import { CommandName, Commands } from "#/declarations/CommandNames";
 import { HeadingsCommandableAssistant, HeadingsCommandableDeclarable } from "#/declarations/commands/HeadingsCommandable";
 import { IDScope } from "#/declarations/ExplicitDeclaration";
+import { Env } from "#/env";
 import { UnexpectedUndefinedError } from "#/utils/errors";
-import { UNARY_UNION_SUPPRESS } from "#/utils/ts";
+import { Num, UNARY_UNION_SUPPRESS } from "#/utils/ts";
 import { CacheItem, HeadingCache } from "obsidian";
 
 export interface HeadingAndDelimiterDeclarable extends HeadingsCommandableDeclarable {
@@ -101,22 +102,42 @@ export class HeadingAndDelimiterParser extends CommandDeclarationParser<HeadingA
 				throw new UnexpectedUndefinedError();
 
 			// Front side should end as soon as the first delimiter (as specified by the declaration) is found.
-			if (!this.lastFrontHeadingLevel && HeadingAndDelimiterParser.isSectionType(maybeNextDelimiter, HeadingAndDelimiterParser.SECTION_TYPE_THEMATICBREAK))
+			if (this.lastFrontHeadingLevel === undefined && HeadingAndDelimiterParser.isSectionType(maybeNextDelimiter, HeadingAndDelimiterParser.SECTION_TYPE_THEMATICBREAK))
 				nextDelimiter = maybeNextDelimiter;
-			// Back side ends when a heading of same or lower level as the heading that begain the front side.
-			else if (this.lastFrontHeadingLevel && HeadingAndDelimiterParser.isHeadingCache(maybeNextDelimiter) && this.lastFrontHeadingLevel >= maybeNextDelimiter.level)
+			// Back side ends when a heading of same or lower level as the heading that begain the front side is found, or when nothing is found.
+			else if (Num.is(this.lastFrontHeadingLevel) && HeadingAndDelimiterParser.isHeadingCache(maybeNextDelimiter) && this.lastFrontHeadingLevel >= maybeNextDelimiter.level)
 				nextDelimiter = maybeNextDelimiter;
 
-			if (nextDelimiter)
+			if (nextDelimiter !== null)
 				break;
 		}
 
-		this.generateDeclaration(id, this.lastFrontHeadingLevel ? false : true, inBetweenDelimiter, nextDelimiter, idScope);
-
-		if (isDelimiterHeading)
+		if (isDelimiterHeading) {
+			Env.assert(this.lastFrontHeadingLevel === undefined);
 			this.lastFrontHeadingLevel = inBetweenDelimiter.level; // Next iteration is the back side. Save the level to be able to find the next heading that counts as the end of the back side.
-		else
+
+			Env.assert(nextDelimiter !== null && HeadingAndDelimiterParser.isSectionType(nextDelimiter, HeadingAndDelimiterParser.SECTION_TYPE_THEMATICBREAK));
+			if (nextDelimiter === null)
+				throw new Error("No delimiter found, for back side");
+
+			this.generateDeclaration(
+				id,
+				true,
+				inBetweenDelimiter,
+				HeadingAndDelimiterParser.createCacheItem(nextDelimiter.position.start),
+				idScope
+			);
+		}
+		else {
 			this.lastFrontHeadingLevel = undefined; // Next iteration is the next front side
+			this.generateDeclaration(
+				id,
+				false,
+				HeadingAndDelimiterParser.createCacheItem(inBetweenDelimiter.position.end),
+				nextDelimiter, // If nextDelimiter is null it's the end of the file.
+				idScope
+			);
+		}
 	}
 
 	/**

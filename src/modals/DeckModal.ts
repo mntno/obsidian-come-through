@@ -2,6 +2,7 @@ import { DataStore, DeckEditor, DeckIDDataTuple } from "#/data/DataStore";
 import { DeckID } from "#/data/FullID";
 import { BaseModal } from "#/modals/BaseModal";
 import { HtmlTag } from "#/utils/dom/constants";
+import { Win } from "#/utils/dom/dom";
 import { Str } from "#/utils/ts";
 import { App, ButtonComponent, Setting } from "obsidian";
 
@@ -62,6 +63,7 @@ export class DeckModal extends BaseModal {
 					this.nameOfDeck = text;
 					this.createButton.setDisabled(this.nameOfDeck.trim().length == 0);
 				});
+				this.setFocusEl(component.inputEl);
 			});
 
 		new Setting(this.contentEl)
@@ -105,7 +107,7 @@ export class DeckModal extends BaseModal {
 		if (this.onSubmit !== undefined && this.result !== undefined) {
 			const result = this.result;
 			const onSubmit = this.onSubmit;
-			setTimeout(() => onSubmit(result), 1);
+			Win.Timeout.set(this.contentEl, 1, () => onSubmit(result));
 		}
 	}
 

@@ -1,3 +1,4 @@
+/* eslint-disable obsidianmd/rule-custom-message -- Only errors and asserts are logged in production, which should never happen. */
 import { Platform } from "obsidian";
 
 const isProduction = process.env["NODE_ENV"] === "production";
@@ -5,60 +6,70 @@ const isDev = !isProduction;
 
 const noopLogger: Pick<Console, "debug" | "log" | "info" | "warn" | "error"> = {
   debug: () => {},
-	log: () => { },
+	log: () => {},
   info: () => {},
   warn: () => {},
   error: () => {},
 };
 
 const devLogger = isDev ? console : noopLogger;
+const _log = {
+	/** To provide very granular, low-level, and highly detailed information. These logs are often too numerous to be helpful during general development but are invaluable when you're trying to diagnose a specific, complex bug. */
+	d: devLogger.debug,
 
-const DevContext = {
+	/**
+		* - This is the most general-purpose logging method. It's a good default when a message doesn't neatly fit into the error, warn, or info categories, or when you're just doing quick, ad-hoc debugging.
+		* - When you use `console.log()`, you are typically saying: "Just output this general message." It's more of a catch-all, or often used for quick, ad-hoc debugging prints.
+		*/
+	l: devLogger.log,
+
+	/**
+		* - To provide high-level, general information about the application's flow or significant events. These are like "milestones" that give you an overview of what the application is doing.
+		* - This is an informational message about a significant event or the general flow of the application. It implies a higher level of importance or a more structured type of message than a generic `log`.
+		*/
+	i: devLogger.info,
+
+	/** To indicate a potential issue, a suboptimal practice, a deprecated feature being used, or a situation that might lead to an error later but isn't critical right now. It's a "heads up" or a "soft error." */
+	w: console.warn,
+
+	e: console.error,
+
+	/** For content processors. See {@link ContentRendererProcessor}. */
+	proc: noopLogger.info,
+
+	/** For views. */
+	view: noopLogger.info,
+
+	/** For data-related operations, such as SR statistics. */
+	data: noopLogger.info,
+
+	/** Parsers. */
+	p: noopLogger.info,
+
+	ui: noopLogger.info,
+
+	/** Line break + tab for logging output formatting. */
+	NT: "\n\t",
+};
+const log: Readonly<typeof _log> = _log;
+
+const _DevContext = {
 	assert: console.assert,
+	log: log,
 	run: (action: () => void) => action(),
-} as const;
+};
+const DevContext: Readonly<typeof _DevContext> = _DevContext;
 
-export const Env = {
+const _Env = {
 	/** Debug/Dev context */
 	dev: isDev ? DevContext : undefined,
 	isDev: isDev,
 
-	/** Always logs */
 	error: console.error,
 	assert: console.assert,
+	catch: console.error,
 
-	/**
-		*
-		*/
-	log: {
-		/** To provide very granular, low-level, and highly detailed information. These logs are often too numerous to be helpful during general development but are invaluable when you're trying to diagnose a specific, complex bug. */
-		d: devLogger.debug,
-
-		/**
-			* - This is the most general-purpose logging method. It's a good default when a message doesn't neatly fit into the error, warn, or info categories, or when you're just doing quick, ad-hoc debugging.
-			* - When you use `console.log()`, you are typically saying: "Just output this general message." It's more of a catch-all, or often used for quick, ad-hoc debugging prints.
-			*/
-		l: devLogger.log,
-
-		/**
-			* - To provide high-level, general information about the application's flow or significant events. These are like "milestones" that give you an overview of what the application is doing.
-			* - This is an informational message about a significant event or the general flow of the application. It implies a higher level of importance or a more structured type of message than a generic `log`.
-			*/
-		i: devLogger.info,
-
-		/** To indicate a potential issue, a suboptimal practice, a deprecated feature being used, or a situation that might lead to an error later but isn't critical right now. It's a "heads up" or a "soft error." */
-		w: console.warn,
-
-		e: console.error,
-
-		/** Debug log for content processors. See {@link ContentRendererProcessor}. */
-		proc: noopLogger.info,
-
-		/** Debug log for views. */
-		view: noopLogger.info,
-
-		data: noopLogger.info,
-	},
+	log: log,
 
 	perf: {
 		now: (): DOMHighResTimeStamp => performance.now(),
@@ -86,5 +97,5 @@ export const Env = {
 	get isTablet(): boolean {
 		return Platform.isTablet;
 	},
-
-} as const;
+};
+export const Env: Readonly<typeof _Env> = _Env;

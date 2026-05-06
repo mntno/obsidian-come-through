@@ -1,8 +1,9 @@
 import { CommandableAssistant, CommandableDeclarable } from "#/declarations/Commandable";
 import { CommandDeclarationParser } from "#/declarations/CommandDeclarationParser";
 import { NumberDeclarableProperty, OptionalNullableNumberDeclarableProperty } from "#/declarations/Declarable";
+import { LocalStrictKeys } from "#/types";
 import { UnexpectedUndefinedError } from "#/utils/errors";
-import { LocalStrictKeys, Obj } from "#/utils/ts";
+import { Obj } from "#/utils/ts";
 import { CacheItem, HeadingCache } from "obsidian";
 
 /**

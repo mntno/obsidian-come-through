@@ -1,30 +1,25 @@
-import { Env } from "env";
-// Make sure you're doing import { moment} from 'obsidian' so that you don't import another copy — https://docs.obsidian.md/oo24/plugin#Performance
-// Regarding use of `@ts-expect-error`: Obsidian's recommended import style (import { moment } from 'obsidian') is typed as a namespace and is flagged as "not callable" by TypeScript 6.0's stricter checks. Instead of setting `esModuleInterop` to `true` in `tsconfig` just use  `@ts-expect-error` here.
-import { moment } from "obsidian"; // TODO: Use Luxon
-import { Str } from "utils/ts";
-// @ts-expect-error
-import { DateTime as LuxonDateTime } from "luxon";
+import { Env } from "#/env";
+import { Api } from "#/utils/obs/api";
+import { Str } from "#/utils/ts";
+import { DateTime as LxnDateTime, Settings, ToRelativeOptions } from "luxon";
 
-const TIME_FORMAT = "LT";
-const DATE_FORMAT = "MMM D, LT";
+Settings.defaultLocale = Api.App.getLanguage();
+
+const TIME_FORMAT = LxnDateTime.TIME_SIMPLE;
+const DATE_FORMAT = LxnDateTime.DATETIME_MED;
 
 export const DateTime = {
-	// @ts-expect-error
-	toTimeString: (date: Date) => moment(date).format(TIME_FORMAT),
-	// @ts-expect-error
-	toString: (date: Date) => moment(date).format(DATE_FORMAT),
+	toTimeString: (date: Date) => LxnDateTime.fromJSDate(date).toLocaleString(TIME_FORMAT),
+	toString: (date: Date) => LxnDateTime.fromJSDate(date).toLocaleString(DATE_FORMAT),
 
 	dateStringFromIso: (iso8601: string): string => {
-		Env.assert(!Str.is(iso8601 as unknown), "Expected an ISO string.");
-		// @ts-expect-error
-		return moment(iso8601).format(DATE_FORMAT);
+		Env.assert(Str.isNonEmpty(iso8601), "Expected an ISO string.");
+		return LxnDateTime.fromISO(iso8601).toLocaleString(DATE_FORMAT);
 	},
 
 	dateFromIso: (iso8601: string): Date => {
-		Env.assert(!Str.is(iso8601 as unknown), "Expected an ISO string.");
-		// @ts-expect-error
-		return moment(iso8601).toDate();
+		Env.assert(Str.isNonEmpty(iso8601), "Expected an ISO string.");
+		return LxnDateTime.fromISO(iso8601).toJSDate();
 	},
 
 	toIso: (date: Date) => date.toISOString(),
@@ -34,36 +29,23 @@ export const DateTime = {
 		* @param compareDate
 		* @returns `true` if {@link compareDate} is later than {@link date}.
 		*/
-	isDateLater: (date: Date, compareDate: Date): boolean => compareDate.getTime() - date.getTime() > 0 ? true : false,
+	isDateLater: (date: Date, compareDate: Date): boolean => compareDate.getTime() - date.getTime() > 0,
 
-	diffString: (now: Date, otherDate: Date): string => {
-		const dtNow = LuxonDateTime.fromJSDate(now);
-		const dtOther = LuxonDateTime.fromJSDate(otherDate);
-
-		const options = {
-			// [toHuman](https://moment.github.io/luxon/api-docs/index.html#durationtohuman)
-			showZeros: false, // Show all units previously used by the duration even if they are zero
-			listStyle: "long",
-
-			// [locale options](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/NumberFormat/NumberFormat#locale_options)
-
-			// [style options](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/NumberFormat/NumberFormat#style_options)
-			unitDisplay: "long",
-
-			// [digit options](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/NumberFormat/NumberFormat#digit_options)
-			minimumIntegerDigits: 1,
-			minimumFractionDigits: 0,
-			maximumFractionDigits: 0,
-			//minimumSignificantDigits: 1,
-			//maximumSignificantDigits: 21,
-
-			// [other options](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/NumberFormat/NumberFormat#other_options)
-			signDisplay: "never",
-		};
-
-		const diff = dtOther.diff(dtNow);
-		const humanizedString = diff.shiftTo("years", "months", "days").toHuman(options);
-
-		return diff.as("milliseconds") < 0 ? `${humanizedString} ago` : `In ${humanizedString}`;
+	/**
+	 * @param now
+	 * @param otherDate
+	 * @returns `null` if the diff calculation failes or if the given dates are invalid.
+	 */
+	diffString: (now: Date, otherDate: Date): string | null => {
+		const dtNow = LxnDateTime.fromJSDate(now);
+		const dtOther = LxnDateTime.fromJSDate(otherDate);
+		return dtOther.toRelative({
+			base: dtNow,
+			style: "long", //"narrow", "short",
+			//unit: "day",
+			round: true,
+			rounding: "trunc",
+			padding: 0,
+		} satisfies ToRelativeOptions);
 	},
-} as const;
+};

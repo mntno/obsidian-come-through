@@ -1,7 +1,7 @@
-import { HtmlAttribute, HtmlTag } from "utils/dom/constants";
-import { createElWrapperHtml } from "utils/obs/dom";
-import { ContentRendererPostProcessor, ContentRendererPostProcessorAssistant, ContentRendererPreProcessor, ContentRendererProcessor, PostProcessorParameter, PreProcessorParameter } from "./ContentRendererProcessor";
-import { Env } from "env";
+import { Env } from "#/env";
+import { ContentRendererPostProcessor, ContentRendererPostProcessorAssistant, ContentRendererPreProcessor, ContentRendererProcessor, PostProcessorParameter, PreProcessorParameter } from "#/renderings/content/ContentRendererProcessor";
+import { HtmlAttribute, HtmlTag } from "#/utils/dom/constants";
+import { El } from "#/utils/obs/dom";
 
 
 export type HtmlElementWrapperProcessorConfig = {
@@ -24,7 +24,7 @@ export class HtmlElementWrapperProcessor extends ContentRendererProcessor implem
 		let content = param.markdown;
 
 		content = content.replace(ELEMENT_REGEX, (html, tag) => {
-			return createElWrapperHtml(tag, html);
+			return El.createWrapper.html(tag, html);
 		});
 
 		param.markdown = content;
@@ -81,7 +81,7 @@ export class HtmlElementWrapperProcessor extends ContentRendererProcessor implem
 
 				matches.forEach(match => {
 					const matchText = match[0];
-					const matchIndex = match.index!;
+					const matchIndex = match.index;
 
 					if (matchIndex > lastIndex) {
 						const beforeText = text.slice(lastIndex, matchIndex);

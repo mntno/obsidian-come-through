@@ -1,4 +1,4 @@
-import t from "Localization";
+import { t } from "Localization";
 import { BaseModal } from "modals/BaseModal";
 import { App, Platform, Setting } from "obsidian";
 

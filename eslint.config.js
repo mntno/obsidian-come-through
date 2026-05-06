@@ -1,10 +1,9 @@
 // https://typescript-eslint.io/packages/typescript-eslint#usage
 import eslint from "@eslint/js";
+import obsidianmd from "eslint-plugin-obsidianmd";
 import { defineConfig } from 'eslint/config';
-import tseslint from "typescript-eslint";
 import globals from "globals";
-
-//import obsidianmd from "eslint-plugin-obsidianmd";
+import tseslint from "typescript-eslint";
 
 // If using Svelte
 // import sveltePlugin from "eslint-plugin-svelte";
@@ -13,21 +12,31 @@ import globals from "globals";
 export default defineConfig(
 	{
 		ignores: [
-			"**/build/**",
-			"**/dist/**",
-			"./main.js",
-			"./src/**/*js",
+			"**/dev-vault/**",
+			"**/dist/**"
 		],
 	},
 	eslint.configs.recommended,
-	// https://typescript-eslint.io/users/configs#recommended-configurations
-	...tseslint.configs.recommended,
-	//...obsidianmd.configs.recommended,
+	...tseslint.configs.recommended, // https://typescript-eslint.io/users/configs#recommended-configurations
+	...obsidianmd.configs.recommended,
+	{
+		// Fix: Turn off rules for config files or scripts that cause this error when linting:
+		// Error: Error while loading rule 'X':
+		// 	You have used a rule which requires type information, but don't have parserOptions set to generate type information for this file.
+		// See https://tseslint.com/typed-linting for enabling linting with type information.
+		// Parser: typescript-eslint/parser
+		// Occurred while linting /…/esbuild.config.mjs (eslint.config.js, tsconfig.json)
+		files: ["*.js", "*.json", "*.mjs"],
+		rules: {
+			"@typescript-eslint/no-deprecated": "off",
+			"@typescript-eslint/no-unused-expressions": "off",
+			"obsidianmd/no-plugin-as-component": "off",
+		},
+	},
 	{
 		files: ["**/*.ts", "**/*.tsx"],
 		plugins: {
-			// https://typescript-eslint.io/packages/typescript-eslint#manual-usage
-			"@typescript-eslint": tseslint.plugin,
+			"@typescript-eslint": tseslint.plugin, // https://typescript-eslint.io/packages/typescript-eslint#manual-usage
 		},
 		languageOptions: {
 			parser: tseslint.parser,
@@ -39,23 +48,22 @@ export default defineConfig(
 			globals: {
 				...globals.browser,
 				...globals.node,
-
-				// Instead of adding `obsidian-typings` package. Add whatever is used here instead.
-				createDiv: "readonly",
 			}
 		},
 		rules: {
+			"no-param-reassign": ["warn", { "props": false }],
+
 			// You should always have "no-unused-vars": "off" alongside @typescript-eslint/no-unused-vars,
 			// https://typescript-eslint.io/rules/no-unused-vars/
 			"no-unused-vars": "off",
 			"@typescript-eslint/no-unused-vars": ["error", {
-			    "args": "all",
-			    "argsIgnorePattern": "^_",
-			    "caughtErrors": "all",
-			    "caughtErrorsIgnorePattern": "^_",
-			    "destructuredArrayIgnorePattern": "^_",
-			    "varsIgnorePattern": "^_",
-			    "ignoreRestSiblings": true,
+				"args": "all",
+				"argsIgnorePattern": "^_",
+				"caughtErrors": "all",
+				"caughtErrorsIgnorePattern": "^_",
+				"destructuredArrayIgnorePattern": "^_",
+				"varsIgnorePattern": "^_",
+				"ignoreRestSiblings": true,
 			}],
 
 			//
@@ -73,6 +81,26 @@ export default defineConfig(
 				"allowConstantLoopConditions": "only-allowed-literals"
 			}],
 			"@typescript-eslint/switch-exhaustiveness-check": "error",
+
+			"obsidianmd/ui/sentence-case": [
+        "warn",
+        {
+          brands: ["Obsidian"],
+					acronyms: ["FSRS"],
+					ignoreWords: [
+						"Review",
+						"Learning",
+						"New",
+						"Relearning",
+						"Again",
+						"Hard",
+						"Good",
+						"Easy",
+					],
+					enforceCamelCaseLower: false,
+          mode: "strict",
+        },
+      ],
 		},
 	},
 );

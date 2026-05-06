@@ -106,7 +106,7 @@ export class Scheduler {
 	 *
 	 * @param cards
 	 * @param reviewDate
-	 * @returns `null` if there is noting to review at {@link reviewDate}.
+	 * @returns `null` if there is nothing to review at {@link reviewDate}.
 	 */
 	public getNextItem(cards: CardIDDataTuple[], reviewDate: Date, options: NextReviewItemOptions): ReviewItem | null {
 		const retrievabilityUpperThreshold = options.retrievabilityUpperThreshold ?? 0.95;
@@ -232,7 +232,7 @@ export class Scheduler {
 			if (groupRelearningAsLearning && item.card.state === State.Relearning)
 				grouped[State.Learning].push(item);
 			else
-				grouped[item.card.state as State].push(item);
+				grouped[item.card.state].push(item);
 		}
 
 		return grouped;
@@ -290,11 +290,11 @@ export class Scheduler {
 			return 0;
 		}
 
-		public static dueDateAsc(a: DataItem, b: DataItem): number {
+		public static dueDateAsc(this: void, a: DataItem, b: DataItem): number {
 			return TypeConvert.time(a.card.due).getTime() - TypeConvert.time(b.card.due).getTime();
 		}
 
-		public static retrievability(a: RetreivabilityDataItem, b: RetreivabilityDataItem) {
+		public static retrievability(this: void, a: RetreivabilityDataItem, b: RetreivabilityDataItem) {
 			if (a.retreivability < b.retreivability) return -1;
 			if (a.retreivability > b.retreivability) return 1;
 			return 0;

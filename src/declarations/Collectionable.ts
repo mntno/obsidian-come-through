@@ -1,6 +1,7 @@
 import { UniqueID } from "#/data/UniqueID";
 import { Declarable, DeclarableAssistant, NullableStringDeclarableProperty } from "#/declarations/Declarable";
-import { LocalStrictKeys, Obj } from "#/utils/ts";
+import { LocalStrictKeys } from "#/types";
+import { Obj } from "#/utils/ts";
 
 export interface DeckableDeclarable extends Declarable {
 	/** Optional. */

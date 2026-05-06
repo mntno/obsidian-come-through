@@ -54,7 +54,7 @@ export class DeclarationManager {
 
 			switch (type) {
 				case "deckAdded": {
-					DeckModal.add(app, data, async (addedDeck) => {
+					DeckModal.add(app, data, (addedDeck) => {
 
 						// Add a new option for the created deck
 						deckSelectEl.createEl(HtmlTag.SELECT.OPTION.NAME, {
@@ -109,8 +109,8 @@ export class DeclarationManager {
 			const startIndex = this.getIndexUpToLine(data, info.lineStart + 1);
 			const endIndex = this.getIndexUpToLine(data, info.lineEnd);
 
-			console.assert(startIndex >= 0);
-			console.assert(endIndex >= 0);
+			Env.assert(startIndex >= 0);
+			Env.assert(endIndex >= 0);
 
 			return data.slice(0, startIndex) + replacement + data.slice(endIndex);
 		});

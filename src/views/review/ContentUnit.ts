@@ -6,7 +6,7 @@ export class ContentUnit {
 	private pages: (HTMLDivElement | undefined)[];
 
 	constructor(numberOfPages: number) {
-		this.pages = new Array(numberOfPages).fill(undefined);
+		this.pages = new Array<HTMLDivElement | undefined>(numberOfPages).fill(undefined);
 	}
 
 	/**

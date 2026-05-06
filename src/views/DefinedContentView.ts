@@ -1,29 +1,42 @@
-import { ContentParser } from "ContentParser";
-import { DataStore } from "data/DataStore";
-import t from "Localization";
-import { Menu, Scope, TFile, ViewStateResult, WorkspaceLeaf } from "obsidian";
-import { HeadingProcessor } from "renderings/content/HeadingProcessor";
-import { SettingsManager } from "Settings";
-import { BaseView, BaseViewState } from "views/BaseView";
+import { ContentParser } from "#/ContentParser";
+import { DataStore } from "#/data/DataStore";
+import { Env } from "#/env";
+import { t } from "#/Localization";
+import { ContentRenderOptions } from "#/renderings/content/ContentRenderer";
+import { HeadingProcessor } from "#/renderings/content/HeadingProcessor";
+import { SettingsManager } from "#/Settings";
+import { OmitIndexSignature } from "#/types";
+import { Api } from "#/utils/obs/api";
+import { Arr, Str } from "#/utils/ts";
+import { BaseView, BaseViewState } from "#/views/BaseView";
+import { IconName, TFile, ViewStateResult, WorkspaceLeaf } from "obsidian";
+import { Icon } from "ui/constants";
 
 export interface DefinedContentViewState extends BaseViewState {
-	filePath?: string;
+	/** Paths will be updated if the file is renamed or deleted. See {@link DefinedContentViewState.onFileRename} */
+	readonly filePaths: string[];
 }
+
+const DEFAULT_STATE: OmitIndexSignature<DefinedContentViewState> = {
+	filePaths: []
+} as const;
 
 export class DefinedContentView extends BaseView<DefinedContentViewState> {
 
 	public static readonly TYPE = "come-through-view-defined-content";
-	public static createViewState(file: TFile): DefinedContentViewState {
+	public static createViewState(file: TFile | TFile[]): DefinedContentViewState {
+		Env.log.d("DefinedContentView:createViewState", Env.log.NT, file);
 		return BaseView.withDefaultViewState({
-			filePath: file.path,
-		} satisfies DefinedContentViewState);
+			...DEFAULT_STATE,
+			filePaths: Arr.is(file) ? file.map(f => f.path) : [file.path],
+		} satisfies OmitIndexSignature<DefinedContentViewState>);
 	}
 
-	/**
-		* - `null` if {@link TFile} could not be created from a file path.
-		* - `undefined` if for other reasons there is no file.
-		*/
-	private file: TFile | null | undefined;
+	private state: DefinedContentViewState = { ...DEFAULT_STATE };
+
+	private files: TFile[] = [];
+	/** These paths did not correspond to any valid files. */
+	private invalidPaths: string[] = [];
 
 	/**
 		* @param data Used to receive data changed notifications.
@@ -31,11 +44,14 @@ export class DefinedContentView extends BaseView<DefinedContentViewState> {
 	constructor(leaf: WorkspaceLeaf, settingsManager: SettingsManager, data: DataStore) {
 		super(leaf, settingsManager, {
 			data: data,
+			paneMenu: {
+				addReloadItem: true
+			},
 		});
+	}
 
-		this.navigation = true;
-		this.scope = new Scope(this.app.scope);
-		this.scope.register(["Mod"], "R", this.render);
+	public override getIcon(): IconName {
+		return Icon.View.DEFINED_CONTENT;
 	}
 
 	public override getViewType(): string {
@@ -43,7 +59,7 @@ export class DefinedContentView extends BaseView<DefinedContentViewState> {
 	}
 
 	public override getDisplayText(): string {
-		return t.views.declarations.title(this.file ?? undefined);
+		return t.views.declarations.title(this.files);
 	}
 
 	public override onload(): void {
@@ -52,38 +68,37 @@ export class DefinedContentView extends BaseView<DefinedContentViewState> {
 		// Note that the data change callback will also be called on file rename.
 		// The "rename" event will be called first.
 		// The difference is that when there's a rename event, we want to update the display text.
-		this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
-			if (file instanceof TFile)
-				this.onFileRename(file, oldPath);
+		this.registerEvent(this.app.vault.on("rename", async (file, oldPath) => {
+			if (Api.File.is(file))
+				await this.onFileRename(file, oldPath);
+		}));
+
+		this.registerEvent(this.app.vault.on("delete", async (file) => {
+			if (Api.File.is(file))
+				await this.onFileDelete(file);
 		}));
 	}
 
-	public override onunload(): void {
-		super.onunload();
-	}
-
-	public override onPaneMenu(menu: Menu, source: 'more-options' | 'tab-header' | string): void {
-		super.onPaneMenu(menu, source);
-		if (source === "tab-header")
-			return;
-
-		menu.addItem(item => {
-			item.setTitle("Reload");
-			item.setSection("pane");
-			item.setIcon("refresh-cw");
-			item.onClick(this.render);
-		});
-	}
-
 	protected override onSetState(state: DefinedContentViewState, _result: ViewStateResult): void {
-		this.file = state.filePath ? this.app.vault.getFileByPath(state.filePath) : undefined;
-		this.contentRenderer.file = this.file;
+		this.state = { ...DEFAULT_STATE, ...state };
+		this.files = [];
+		this.invalidPaths = [];
+
+		for (const path of state.filePaths) {
+			const file = this.app.vault.getFileByPath(path);
+			if (file !== null)
+				this.files.push(file);
+			else
+				this.invalidPaths.push(path);
+		}
+
+		this.files.sort((a, b) => a.basename.localeCompare(b.basename));
 	}
 
 	protected override onGetState(): DefinedContentViewState {
 		return {
-			filePath: this.file?.path,
-		}
+			...this.state,
+		} satisfies OmitIndexSignature<DefinedContentViewState>;
 	}
 
 	protected override onDataChanged(): void {
@@ -93,27 +108,44 @@ export class DefinedContentView extends BaseView<DefinedContentViewState> {
 	};
 
 	private onFileRename = async (file: TFile, oldPath: string) => {
+		Env.log.d("DefinedContentView:onFileRename", file, oldPath);
 
-		// When the file is renamed, the `path` of the existing `TFile` reference automatically updates.
-		// So this condition is expected to be false. Keep it nonetheless.
-		if (this.file && this.file.path === oldPath)
-			this.file = file;
+		const pathIndex = this.state.filePaths.indexOf(oldPath);
+		if (pathIndex === -1) // A file was renamed that is not relevant.
+			return;
 
-		if (this.file && this.file.path === file.path) {
-			// This will explicitly tell the WorkspaceLeaf to update its view state,
-			// which includes re-evaluating getDisplayText() and updating the tab header with the new file path.
-			// However, the title in the "tab title bar" is not updated.
-			//
-			// `setViewState` calls `setState`, which calls `render` so no need to call `render here`.
-			await this.leaf.setViewState({ type: DefinedContentView.TYPE, state: this.getState() });
-		}
+		this.state.filePaths[pathIndex] = file.path;
+		await this.reinitiate(DefinedContentView.TYPE, true); // Repopulate and render everything.
+	};
+
+	private onFileDelete = async (file: TFile) => {
+		Env.log.d("DefinedContentView:onFileDelete", file);
+
+		const pathIndex = this.state.filePaths.indexOf(file.path);
+		if (pathIndex === -1) // A file was deleted that is not relevant.
+			return;
+
+		this.state.filePaths.splice(pathIndex, 1);
+		await this.reinitiate(DefinedContentView.TYPE, true); // Repopulate and render everything.
 	};
 
 	protected override async onRender(): Promise<void> {
-		if (!this.file) {
-			console.error("No file set.")
-			this.dom.create.para({ text: t.views.declarations.fileNotSet });
+		if (Arr.isEmpty(this.state.filePaths)) {
+			this.dom.create.p(t.views.declarations.fileNotSet);
 			return;
+		}
+
+		const files = this.files;
+
+		if (Arr.isNonEmpty(this.invalidPaths)) {
+			const pathsLog = this.invalidPaths.join(", ");
+
+			if (Arr.isEmpty(files))
+				Env.log.e(`No valid paths: ${this.invalidPaths.length} invalid paths found: ${pathsLog}`);
+			else
+				Env.log.e(`Found ${this.invalidPaths.length} invalid paths: ${pathsLog}`);
+
+			this.dom.create.p(t.views.declarations.fileNotSet);
 		}
 
 		// <summary> is styled as a <h2>, this will normalize its children to start at <h3>.
@@ -122,49 +154,76 @@ export class DefinedContentView extends BaseView<DefinedContentViewState> {
 		// Keeps track of which details elements have been dynamically created on expand.
 		const hasRendered = new WeakMap<HTMLDetailsElement, boolean>();
 
-		this.dom.create.el("h1", { text: t.views.declarations.title(this.file) });
+		let totalContentDefinitions = 0;
+		let totalIncompleteDefinitions = 0;
+
+		this.dom.create.h(1, t.views.declarations.title(files));
 		const infoPara = this.dom.create.paraWrapper();
 
-		const parsedContent = await ContentParser.getCardFromFile(this.file, this.app, {
-			contentRead: {
-				hideCardSectionMarker: this.settingsManager.settings.hideCardSectionMarker,
-			}
-		});
+		for (const file of files) {
+			let fileContentDefinitions = 0;
+			let fileIncompleteDefinitions = 0;
 
-		let numberOfContentDefinitions = 0;
-		let numberOfIncompleteContentDefinitionsInFile = 0;
+			if (files.length > 1)
+				this.dom.create.h(2, file.basename);
 
-		for (const parsedUnit of Object.values(parsedContent)) {
+			const fileInfoPara = this.dom.create.paraWrapper();
 
-			if (parsedUnit.complete !== null) {
-				const completeUnit = parsedUnit.complete;
-				this.createDefinedContentBlockSection(hasRendered, `${completeUnit.frontID.cardID}: Front`, completeUnit.frontMarkdown);
-				this.createDefinedContentBlockSection(hasRendered, `${completeUnit.backID.cardID}: Back`, completeUnit.backMarkdown);
-				numberOfContentDefinitions += 2;
-			}
-			else if (parsedUnit.incomplete !== null) {
-				const incompleteUnit = parsedUnit.incomplete;
+			const options: ContentRenderOptions = {
+				sourcePath: file.path,
+			};
 
-				if (incompleteUnit.frontID) {
-					this.createDefinedContentBlockSection(hasRendered, `${incompleteUnit.frontID.cardID}: Front (incomplete)`, incompleteUnit.frontMarkdown);
-					numberOfIncompleteContentDefinitionsInFile += 1;
+			const parsedContent = await ContentParser.getCardFromFile(file, this.app, {
+				contentRead: {
+					hideCardSectionMarker: this.settingsManager.settings.hideCardSectionMarker,
 				}
-				if (incompleteUnit.backID) {
-					this.createDefinedContentBlockSection(hasRendered, `${incompleteUnit.backID.cardID}: Back (incomplete)`, incompleteUnit.backMarkdown);
-					numberOfIncompleteContentDefinitionsInFile += 1;
+			});
+
+			for (const parsedUnit of Object.values(parsedContent)) {
+
+				if (parsedUnit.complete !== null) {
+					const completeUnit = parsedUnit.complete;
+					this.createDefinedContentBlockSection(hasRendered, `${completeUnit.frontID.cardID}: Front`, completeUnit.frontMarkdown, options);
+					this.createDefinedContentBlockSection(hasRendered, `${completeUnit.backID.cardID}: Back`, completeUnit.backMarkdown, options);
+					fileContentDefinitions += 2;
+				}
+				else if (parsedUnit.incomplete !== null) {
+					const incompleteUnit = parsedUnit.incomplete;
+
+					if (incompleteUnit.frontID) {
+						this.createDefinedContentBlockSection(hasRendered, `${incompleteUnit.frontID.cardID}: Front (incomplete)`, incompleteUnit.frontMarkdown, options);
+						fileIncompleteDefinitions += 1;
+					}
+					if (incompleteUnit.backID) {
+						this.createDefinedContentBlockSection(hasRendered, `${incompleteUnit.backID.cardID}: Back (incomplete)`, incompleteUnit.backMarkdown, options);
+						fileIncompleteDefinitions += 1;
+					}
 				}
 			}
+
+			const fileLink = this.app.fileManager.generateMarkdownLink(file, Str.EMPTY /* custom view has no sourcePath */);
+			const fileMarkdownText = fileLink +
+				` contains declarations that define ${fileContentDefinitions + fileIncompleteDefinitions} pages` +
+				`${fileIncompleteDefinitions > 0 ? " (" + fileIncompleteDefinitions + " incomplete)" : ""}` +
+				`, amounting to ${fileContentDefinitions / 2} complete review units.`;
+
+			await this.contentRenderer.render(fileMarkdownText, fileInfoPara, { sourcePath: Str.EMPTY });
+
+			totalContentDefinitions += fileContentDefinitions;
+			totalIncompleteDefinitions += fileIncompleteDefinitions;
 		}
 
-		const markdownText = this.app.fileManager.generateMarkdownLink(this.file, "") + // custom view has not sourcePath.
-			` contains declarations that defines ${numberOfContentDefinitions + numberOfIncompleteContentDefinitionsInFile} content blocks` +
-			`${numberOfIncompleteContentDefinitionsInFile > 0 ? " (" + numberOfIncompleteContentDefinitionsInFile + " incomplete)" : ""}` +
-			`, amounting to ${numberOfContentDefinitions / 2} review units.`;
+		if (files.length > 1) {
+			const markdownText =
+				`These ${files.length} files contain declarations that define ${totalContentDefinitions + totalIncompleteDefinitions} pages` +
+				`${totalIncompleteDefinitions > 0 ? " (" + totalIncompleteDefinitions + " incomplete)" : ""}` +
+				`, amounting to ${totalContentDefinitions / 2} complete review units.`;
 
-		await this.contentRenderer.render(markdownText, infoPara);
+			await this.contentRenderer.render(markdownText, infoPara, { sourcePath: Str.EMPTY });
+		}
 	}
 
-	private createDefinedContentBlockSection(hasRendered: WeakMap<HTMLDetailsElement, boolean>, summary: string, content?: string) {
+	private createDefinedContentBlockSection(hasRendered: WeakMap<HTMLDetailsElement, boolean>, summary: string, content?: string, options?: ContentRenderOptions) {
 		this.dom.create.el("details", undefined, (detailsEl) => {
 			detailsEl.createEl("summary", { text: summary });
 			const contentDiv = detailsEl.createDiv();
@@ -172,7 +231,7 @@ export class DefinedContentView extends BaseView<DefinedContentViewState> {
 				if (detailsEl.open && !hasRendered.has(detailsEl)) {
 					hasRendered.set(detailsEl, true);
 					if (content)
-						await this.contentRenderer.render(content, contentDiv);
+						await this.contentRenderer.render(content, contentDiv, options);
 				}
 				// else if (!detailsEl.open && this.hasRendered.has(detailsEl)) {
 				// 	contentDiv.empty();

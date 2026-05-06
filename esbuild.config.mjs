@@ -1,4 +1,4 @@
-import builtins from "builtin-modules";
+import { builtinModules } from "node:module";
 import esbuild from "esbuild";
 import fs from "fs";
 import path from "path";
@@ -13,6 +13,11 @@ if you want to view the source, please visit the github repository of this plugi
 
 const prod = (process.argv[2] === "production");
 const outdir = prod ? "dist" : "dev-vault";
+
+//- **Warning**: Build verification failed: the `build` script exited with an error.
+// - Ensure `npm/pnpm/yarn/bun run build` completes successfully in a clean environment.
+if (prod)
+    fs.mkdirSync(outdir, { recursive: true });
 
 fs.copyFileSync("manifest.json", path.join(outdir, "manifest.json"));
 
@@ -40,10 +45,11 @@ const context = await esbuild.context({
 		"@lezer/common",
 		"@lezer/highlight",
 		"@lezer/lr",
-		...builtins],
+		...builtinModules],
 	format: "cjs",
 	// Runtime of min supported Obsidian version 1.8.2, see manifest.json
-	target: "es2022",
+	// Adding "safari15" ensures CSS nesting is flattened during minify for compatibility with older iOS/WebKit versions; i.e., if it is removed, the resulting css file will preserve any nested selectors, which is not supported in WebKit until iOS 17.2.
+	target: ["es2022", "safari15"],
 	logLevel: "info",
 	sourcemap: prod ? false : "inline",
 	treeShaking: true,

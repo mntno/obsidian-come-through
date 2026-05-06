@@ -66,7 +66,7 @@ export class HeadingProcessor extends ContentRendererProcessor implements Conten
 				return;
 			}
 
-			const newHeading = document.createElement(`h${targetLevel}`);
+			const newHeading = param.el.createEl(`h${targetLevel}` as keyof HTMLElementTagNameMap);
 
 			// Copy attributes
 			for (let i = 0; i < heading.attributes.length; i++) {

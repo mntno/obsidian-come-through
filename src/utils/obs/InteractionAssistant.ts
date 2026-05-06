@@ -1,5 +1,5 @@
 import { Env } from "#/env";
-import { El } from "#/utils/dom/dom";
+import { El, Win } from "#/utils/dom/dom";
 import { CssClass } from "#/utils/obs/constants";
 import { DomState } from "#/utils/obs/DomState";
 import { InternalApi } from "#/utils/obs/internal";
@@ -200,18 +200,15 @@ export class InteractionAssistant {
 
 		dispatchMouseDown: (e: MouseEvent) => {
 			this.doubleTap.clearMouseDownTimer();
-
-			const win = this.docOrThrow.win;
-			this.doubleTap.mouseDownTimer = win.setTimeout(() => {
+			this.doubleTap.mouseDownTimer = Win.Timeout.set(this.docOrThrow, 300, (win) => {
 				this.doubleTap.mouseDownTimer = null;
 				win.dispatchEvent(new MouseEvent('mousedown', e));
-			}, 300);
-
+			});
 		},
 
 		clearMouseDownTimer: () => {
 			if (this.doubleTap.mouseDownTimer !== null) {
-				this.docOrThrow.win.clearTimeout(this.doubleTap.mouseDownTimer);
+				Win.Timeout.clear(this.docOrThrow, this.doubleTap.mouseDownTimer);
 				this.doubleTap.mouseDownTimer = null;
 			}
 		},

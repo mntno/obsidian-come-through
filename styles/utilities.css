@@ -1,0 +1,78 @@
+div.come-through-workspace-leaf-content {
+
+	.text-xs {
+		font-size: var(--font-smallest);
+	}
+
+	.text-sm {
+		font-size: var(--font-smaller);
+	}
+
+	.text-s {
+		font-size: var(--font-small);
+	}
+
+	.text-b {
+		font-weight: var(--font-bold);
+	}
+
+	.italic {
+		font-style: italic;
+	}
+
+	.text-center {
+		text-align: center;
+	}
+
+	/* Layout */
+	.flex {
+		display: flex;
+	}
+
+	.flex-col {
+		flex-direction: column;
+	}
+
+	/* Alignment — only effective on flex/grid containers.
+   * items-center: centers children along the cross axis (vertically in a row, horizontally in a column).
+   * justify-center: centers children along the main axis (horizontally in a row, vertically in a column). */
+	.items-center {
+		align-items: center;
+	}
+
+	.justify-center {
+		justify-content: center;
+	}
+
+	/* Spacing — only effective on flex/grid containers */
+	/* 4px */
+	.gap-1 {
+		gap: var(--size-4-1);
+	}
+
+	/* 8px */
+	.gap-2 {
+		gap: var(--size-4-2);
+	}
+
+	/* 16px */
+	.gap-4 {
+		gap: var(--size-4-4);
+	}
+
+	table {
+		/* Prevent themes from breaking words mid-letter in table cells */
+		td,
+		th {
+			white-space: nowrap;
+			word-break: normal;
+			overflow-wrap: normal;
+
+			input[type="checkbox"] {
+				margin: 0;
+				padding: 0;
+				display: block;
+			}
+		}
+	}
+}

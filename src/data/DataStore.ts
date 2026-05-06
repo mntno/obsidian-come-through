@@ -1,11 +1,11 @@
-import { CardID, DeckID, DeckableFullID, FullID, NoteID } from "data/FullID";
-import { UniqueID } from "data/UniqueID";
-import { Env } from "env";
-import { deepEqual, strictDeepEqual } from 'fast-equals';
-import { asNoteID, isDate, isString } from "TypeAssistant";
-import { DateTime } from "utils/datetime";
-import { UnexpectedUndefinedError } from "utils/errors";
-import { Arr, Obj, Str } from "utils/ts";
+import { CardID, DeckID, DeckableFullID, FullID, NoteID } from "#/data/FullID";
+import { UniqueID } from "#/data/UniqueID";
+import { Env } from "#/env";
+import { asNoteID, isDate, isString } from "#/TypeAssistant";
+import { DateTime } from "#/utils/datetime";
+import { UnexpectedUndefinedError } from "#/utils/errors";
+import { Arr, Null, Obj, St, Str } from "#/utils/ts";
+import { deepEqual, strictDeepEqual } from "fast-equals";
 
 export interface DataStoreRoot {
 	decks: DecksData;
@@ -143,7 +143,7 @@ export class CardEditor {
 	}
 
 	public setDeck(id?: DeckID) {
-		console.assert(this.data.d.length <= 1, "Multiple deck parents not implemented.");
+		Env.assert(this.data.d.length <= 1, "Multiple deck parents not implemented.");
 		this.data.d = id ? [id] : [];
 	}
 
@@ -189,18 +189,18 @@ export class DeckEditor {
 	 * @param parentID Set to `null` to remove all parents.
 	 */
 	public setParent(parentID: DeckID | null) {
-		console.assert(this.data.p.length <= 1, "Multiple deck parents not implemented.");
+		Env.assert(this.data.p.length <= 1, "Multiple deck parents not implemented.");
 		this.data.p = parentID !== null ? [parentID] : [];
 	}
 
 	public static parent(data: DeckData) {
-		console.assert(data.p.length <= 1, "Multiple deck parents not implemented.");
+		Env.assert(data.p.length <= 1, "Multiple deck parents not implemented.");
 		return data.p.first() ?? null;
 	}
 };
 
 /** Use with {@link DataStore.registerOnChangedCallback} */
-export type DataChanged = (data: DataStoreRoot) => void;
+export type DataChanged = (data: DataStoreRoot) => Promise<void> | void;
 
 type DataSection = Exclude<keyof DataStoreRoot, "decks"> | "all";
 /** See {@link DataStore.Internal.dispatchSection}. */
@@ -240,7 +240,7 @@ export class DataStore {
 		const decks: DeckData[] = [];
 		for (const deckID of card.d) {
 			const deckData = this.getDeck(deckID);
-			console.assert(deckData !== null);
+			Env.assert(deckData !== null);
 			if (deckData !== null)
 				decks.push(deckData);
 		}
@@ -286,7 +286,7 @@ export class DataStore {
 
 	public getDeck(id: DeckID, throwIfNotFound = false): DeckData | null {
 		Env.log.data("DataStore:getDeck: id", id);
-		const data = this.data.decks[id] ?? null;
+		const data = Null.fromUndefined(this.data.decks[id]);
 		if (data === null && throwIfNotFound)
 			throw new Error(`Deck with ID "${id}" was not found.`);
 		return data;
@@ -628,7 +628,7 @@ export class DataStore {
 
 		const data = this.getNote(id.noteID, throwIfNotFound)?.cs[id.cardID] ?? null;
 		if (data === null && throwIfNotFound)
-			throw new Error(`Card ${id} was not found.`);
+			throw new Error(`Card ${id.toString()} was not found.`);
 
 		if (data !== null) {
 			Env.assert(isCardData(data), "Invalid JSON for id:", id.toString());
@@ -636,6 +636,11 @@ export class DataStore {
 		}
 
 		return data;
+	}
+
+	public noteHasItems(noteID: NoteID): boolean {
+		const note = this.getNote(noteID);
+		return note !== null && Obj.nonEmpty(note.cs);
 	}
 
 	public getNote(noteID: NoteID, throwIfNotFound = false): NoteData | null {
@@ -671,37 +676,47 @@ export class DataStore {
 
 		const card = note.cs[id.cardIDOrThrow()] ?? null;
 		if (card === null && throwIfNotFound)
-			throw new Error(`Removed card with ID "${id}" was not found.`);
+			throw new Error(`Removed card with ID "${id.toString()}" was not found.`);
 		return card;
 	}
 
 	/**
-	 * Returns cards belonging to either {@link deckID} or any of its child decks.
-	 * @param deckID If `undefined`, all cards are returned.
+	 * Returns all items belonging to any of the specified {@link deckIDs} or any of their child decks.
+	 * @param deckIDs
 	 * @returns
 	 */
-	public getAllCardsForDeck(deckID?: DeckID): CardIDDataTuple[] {
-		Env.log.data("DataStore:getAllCardsForDeck: deckID", deckID);
-		Env.dev?.assert(deckID === undefined || isString(deckID) && deckID !== Str.EMPTY, deckID);
-		if (deckID === undefined)
-			return this.getAllCards();
+	public getAllCardsForDeck(deckIDs: DeckID | ReadonlyArray<DeckID>): CardIDDataTuple[] {
+		const rootIDs = Arr.readonlyFrom(deckIDs);
+		const targetIDs = new Set<DeckID>();
 
-		const data = this.getDeck(deckID, true);
-		if (!data)
-			return [];
-
-		let cards = this.getAllCards((_, cardData) => DataStore.Predicate.isCardInDeck(deckID, cardData));
-		for (const descendantDeck of this.descendantDecks(deckID)) {
-			cards = [...cards, ...this.getAllCards((_, cardData) => DataStore.Predicate.isCardInDeck(descendantDeck.id, cardData))];
+		for (const id of rootIDs) {
+			if (this.getDeck(id) !== null) {
+				targetIDs.add(id);
+				for (const d of this.descendantDecks(id))
+					targetIDs.add(d.id);
+			}
 		}
 
-		return cards;
+		if (St.isEmpty(targetIDs))
+			return [];
+
+		return this.getAllCards((_, data) => data.d.some(id => targetIDs.has(id)));
 	}
 
-	private descendantDecks(parentID?: DeckID): DeckIDDataTuple[] {
+	/**
+	 * @param parentID
+	 * @param internalCycleGuard Dont pass this parameter directly.
+	 * @returns All descendants of {@link parentID}.
+	 */
+	private descendantDecks(parentID?: DeckID, internalCycleGuard = new Set<DeckID>()): DeckIDDataTuple[] {
 		Env.log.data("DataStore:descendantDecks: parentID", parentID);
 		if (parentID === undefined)
 			return [];
+
+		// Cycle guard: Ex: B is child of A, which is child of B.
+		if (internalCycleGuard.has(parentID))
+			return [];
+		internalCycleGuard.add(parentID);
 
 		const childDecks = this.getAllDecks({
 			predicate: (deck) => DataStore.Predicate.isParentDeck(deck, parentID),
@@ -710,7 +725,7 @@ export class DataStore {
 		let cards: DeckIDDataTuple[] = [];
 		for (const childDeck of childDecks) {
 			cards.push(childDeck);
-			cards = [...cards, ...this.descendantDecks(childDeck.id)];
+			cards = [...cards, ...this.descendantDecks(childDeck.id, internalCycleGuard)];
 		}
 		return cards;
 	}
@@ -731,7 +746,7 @@ export class DataStore {
 				continue;
 
 			for (const [cardID, cardData] of Object.entries(note.cs)) {
-				if (cardFilter && cardFilter(cardID, cardData) === false)
+				if (cardFilter && !cardFilter(cardID, cardData))
 					continue;
 				cards.push(StatisticsHelper.toCardIDDataTuple(StatisticsHelper.createFullID(noteID, cardID), cardData));
 			}
@@ -815,12 +830,12 @@ export class DataStore {
 	 */
 	public syncData(latestIDs: FullID[], inNoteID: NoteID, statisticsFactory: () => StatisticsData) {
 
-		Env.log.d(`DataStore:syncData:\n\tinNoteID: ${inNoteID},\n\tlatestIDs: ${latestIDs.map(id => `${id.cardSide}@${id.cardID}`)}`);
-		Env.dev?.run(() => latestIDs.forEach(id => Env.assert(id.hasNoteID(inNoteID), `Expected all IDs to belong to ${inNoteID}: ${id}`)));
+		Env.dev?.log.d(`DataStore:syncData:\n\tinNoteID: ${inNoteID},\n\tlatestIDs: ${latestIDs.map(id => `${id.cardSide}@${id.cardID}`).join(", ")}`);
+		Env.dev?.run(() => latestIDs.forEach(id => Env.assert(id.hasNoteID(inNoteID), `Expected all IDs to belong to ${inNoteID}: ${id.toString()}`)));
 
 		// Latest data
 		const latestSet = new Set(latestIDs.filter(id => id.isFrontSide).map(id => {
-			console.assert(id.hasNoteID(inNoteID));
+			Env.assert(id.hasNoteID(inNoteID));
 			return id.cardID;
 		}));
 
@@ -845,7 +860,7 @@ export class DataStore {
 
 		// Find new and modified items
 		for (const latestID of latestIDs) {
-			console.assert(latestID.isFrontSide);
+			Env.assert(latestID.isFrontSide);
 			if (!latestID.isFrontSide)
 				continue;
 
@@ -884,7 +899,7 @@ export class DataStore {
 			}
 		}
 
-		Env.log.d(`\taddedIDs: ${addedIDs}, removedIDs: ${removedIDs}, modifiedIDs: ${modifiedIDs}`);
+		Env.dev?.log.d(`\taddedIDs: ${addedIDs.map(id => id.toString()).join(", ")}, removedIDs: ${removedIDs.map(id => id.toString()).join(", ")}, modifiedIDs: ${modifiedIDs.map(id => id.toString()).join(", ")}`);
 
 		return { addedIDs, removedIDs, modifiedIDs };
 	}
@@ -896,7 +911,7 @@ export class DataStore {
 			this.deleteRemovedCards(purgeRemovedBeforeDate);
 			await this.saveData(this.data);
 			this._isDataDirty = false;
-			this.triggerDataChanged();
+			await this.triggerDataChanged();
 		}
 	}
 
@@ -917,7 +932,7 @@ export class DataStore {
 		*
 		* @returns `true` if the {@link changed} callback was invoked.
 		*/
-	public onDataChangedExternally(changedData: DataStoreRoot, changed: (info: DataChangedInfo, commit: () => void) => void, unchanged?: () => void) {
+	public onDataChangedExternally(changedData: DataStoreRoot, changed: (info: DataChangedInfo, commit: () => Promise<void>) => void, unchanged?: () => void) {
 		const currentData = this.data;
 		let isNotEqual = false;
 
@@ -933,10 +948,10 @@ export class DataStore {
 
 		if (info.collectionsChanged || info.activeChanged || info.removedChanged) {
 			isNotEqual = true;
-			changed(info, () => {
+			changed(info, async () => {
 				this.data = info.changedData;
 				this.setDataDirty();
-				this.triggerDataChanged();
+				await this.triggerDataChanged();
 			});
 		}
 		else {
@@ -962,18 +977,17 @@ export class DataStore {
 		this.registeredChangedCallbacks = this.registeredChangedCallbacks.filter(callback => callback !== evt);
 	}
 
-	private triggerDataChanged() {
+	private async triggerDataChanged() {
 		Env.log.data("DataStore:triggerDataChanged", this.registeredChangedCallbacks.length);
-		this.registeredChangedCallbacks.forEach(callback => {
+		for (const callback of this.registeredChangedCallbacks) {
 			try {
-				callback(this.data);
+				await callback(this.data);
 			}
-			catch (error) {
-				console.error("Error executing data changed callback:", error);
+			catch (e) {
+				Env.log.e("Error executing data changed callback:", e);
 			}
-		});
+		}
 	}
-
 	private registeredChangedCallbacks: DataChanged[] = [];
 
 	private static readonly Internal = {
@@ -987,10 +1001,57 @@ export class DataStore {
 					return actions.all();
 				default: {
 					const _exhaustiveCheck: never = section;
-					throw new Error(`DataStore: Unhandled section: ${_exhaustiveCheck}`);
+					throw new Error(`DataStore: Unhandled section: ${String(_exhaustiveCheck)}`);
 				}
 			}
 		}
+	};
+
+	public readonly item = {
+
+		allInCollection: (id: DeckID | ReadonlyArray<DeckID>) => this.getAllCardsForDeck(id),
+
+		allIDsInSet: (set: ReadonlySet<FullID>, throwIfNotFound = false) => {
+			const result: CardIDDataTuple[] = [];
+			for (const id of set) {
+				const data = this.getCard(id, throwIfNotFound);
+				if (data !== null)
+					result.push(StatisticsHelper.toCardIDDataTuple(id, data));
+			}
+			return result;
+		},
+	};
+
+	public readonly collection = {
+
+		all: (options?: GetDecksOptions) => this.getAllDecks(options),
+
+		/**
+		 * @param items Optional list of items to filter. If not provided, all items will be used.
+		 * @param omitInvalid `true` to not return items that reference non-existing collection IDs. When `false`, items with at least one existing id will not be returned.
+		 * @returns Items that do not belong to any collection.
+		 */
+		filterNot: (items?: CardIDDataTuple[], omitInvalid = false) =>
+			(items !== undefined ? items : this.getAllCards()).filter(card => {
+				if (!omitInvalid) {
+					const invalid = this.collection.invalidIDs(card.data);
+					if (invalid.length > 0) {
+						Env.log.w("Item", card.id, "references non-existing collections:", invalid);
+						if (invalid.length === card.data.d.length)
+							return true;
+					}
+				}
+				return Arr.isEmpty(card.data.d);
+			}),
+
+		invalidIDs: (data: CardData) => {
+			const invalid: DeckID[] = [];
+			for (const cID of data.d) {
+				if (this.getDeck(cID) === null)
+					invalid.push(cID);
+			}
+			return invalid;
+		},
 	};
 
 	public readonly filter = {
@@ -998,40 +1059,41 @@ export class DataStore {
 		cardsInDeck: (deckId: DeckID, card: CardIDDataTuple) => DataStore.Predicate.cardsInDeck(deckId)(card.id, card.data),
 	};
 
-	private static Predicate = class {
+	private static readonly Predicate = {
 
 		/**
 		 * Will only return the cards in the specified {@link deckID}, i.e.,
 		 * cards in any subdecks will not be included.
 		 */
-		public static cardsInDeck(deckID?: DeckID): CardPredicate {
+		cardsInDeck(deckID?: DeckID): CardPredicate {
 			return (_, data) => DataStore.Predicate.isCardInDeck(deckID, data);
-		};
+		},
 
-		public static isParentDeck(deck: DeckIDDataTuple, parentID: DeckID): boolean {
+		isParentDeck(deck: DeckIDDataTuple, parentID: DeckID): boolean {
 			return deck.data.p.includes(parentID);
-		}
+		},
 
-		public static hasParentDeck(deck: DeckIDDataTuple): boolean {
+		hasParentDeck(deck: DeckIDDataTuple): boolean {
 			return deck.data.p.length > 0;
-		}
+		},
 
 		/**
 		 * @param deckID The {@link DeckID} or `undefined` for cards that are not associated with any deck.
 		 * @param data
 		 * @returns `true` if {@link data} contains a deck reference to {@link deckID} or if {@link deckID} is `undefined` and there are no deck references.
 		 */
-		public static isCardInDeck(deckID: DeckID | undefined, data: CardData) {
-			console.assert(deckID === undefined || UniqueID.isValid(deckID));
+		isCardInDeck(deckID: DeckID | undefined, data: CardData) {
+			Env.assert(deckID === undefined || UniqueID.isValid(deckID));
+			//this.getDeck(deckID)
 			return deckID ? data.d.includes(deckID) : data.d.length == 0;
-		}
+		},
 	};
 
-	private static Comparer = class {
-		public static deckNameAsc(a: DeckIDDataTuple, b: DeckIDDataTuple) {
+	private static readonly Comparer = {
+		deckNameAsc(this: void, a: DeckIDDataTuple, b: DeckIDDataTuple) {
 			return a.data.n.localeCompare(b.data.n)
 		}
-	}
+	};
 }
 
 /** See {@link DataStore.onDataChangedExternally} */
@@ -1046,17 +1108,13 @@ export type DataChangedInfo = {
 class StatisticsHelper {
 
 	public static ensureDate(value: IsoDateString | Date) {
-		if (isString(value))
-			value = new Date(value);
-		return isDate(value) ? value : null;
+		const date = isString(value) ? new Date(value) : value;
+		return isDate(date) ? date : null;
 	}
 
-	public static ensureDateString(value: IsoDateString | Date | undefined) {
-		if (value === undefined)
-			value = new Date();
-		if (isDate(value))
-			value = value.toISOString();
-		return value as IsoDateString;
+	public static ensureDateString(value: IsoDateString | Date | undefined): IsoDateString {
+		const val = value === undefined ? new Date() : value;
+		return isDate(val) ? val.toISOString() : val;
 	}
 
 	public static isNoteEmpty(note: NoteData) {

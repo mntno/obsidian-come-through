@@ -1,5 +1,6 @@
 import { UniqueID } from "#/data/UniqueID";
-import t from "#/Localization";
+import { Env } from "#/env";
+import { t } from "#/Localization";
 import { Command, Editor, MarkdownFileInfo, MarkdownView } from "obsidian";
 import { Str } from "utils/ts";
 
@@ -33,7 +34,7 @@ export const EditorCommand = {
 					break;
 				}
 			}
-			headingLevel = Math.max(headingLevel + 1, 2);
+			headingLevel = Math.min(Math.max(headingLevel + 1, 2), 6);
 			const hashes = '#'.repeat(headingLevel || 2);
 
 			const id = UniqueID.generateID();
@@ -63,7 +64,7 @@ export const EditorCommand = {
 			editor.setCursor(editor.offsetToPos(editor.posToOffset(cursor) + firstPage.length - 2));
 
 			if (copyLastPage)
-				navigator.clipboard.writeText(lastPage);
+				navigator.clipboard.writeText(lastPage).catch(Env.catch);
 		}
 	}),
 

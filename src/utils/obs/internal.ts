@@ -1,6 +1,16 @@
+/* eslint-disable no-undef, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call -- This file encapsulates all use of private Obsidian APIs. Should any type change, only this file needs to be updated. Any structural changes should be handled by the try/catch blocks.  */
 import { Env } from "#/env";
 import { Bln } from "#/utils/ts";
-import { App, KeymapEventListener, Scope, Vault } from "obsidian";
+import { App, FuzzySuggestModal, KeymapEventListener, Scope, Vault } from "obsidian";
+
+export class InternalApiError extends Error {
+	public constructor(message: string, cause?: unknown) {
+		super(message, { cause });
+		this.name = "InternalApiError";
+	}
+}
+
+type ErrorCallback = (e: InternalApiError) => void;
 
 export const InternalApi = {
 
@@ -42,15 +52,14 @@ export const InternalApi = {
 		}
 	},
 
-	getConfig: (vault: Vault, key: "autoFullScreen" | "floatingNavigation" | "showInlineTitle" | "showIndentGuide" | "rightToLeft") => {
+	getConfig: (vault: Vault, key: "autoFullScreen" | "floatingNavigation" | "showInlineTitle" | "showIndentGuide" | "rightToLeft" | "readableLineLength") => {
 		try {
 			// @ts-expect-error
 			const value = vault.getConfig(key);
 			return Bln.isTrue(value);
 		}
 		catch (e) {
-			Env.log.e("Failed to get config.", e, key);
-			return false;
+			return new InternalApiError("Failed to get config: " + key, e);
 		}
 	},
 
@@ -64,6 +73,36 @@ export const InternalApi = {
 		catch (e) {
 			Env.log.e("Failed to hide navigation.", e);
 		}
-	}
+	},
 
-} as const;
+	Modal: {
+		Fuzzy: {
+			selectedItemIndex: <T>(m: FuzzySuggestModal<T>, onFail: ErrorCallback = (e) => Env.log.e(e)): number => {
+				try {
+					// @ts-expect-error
+					return m.chooser.selectedItem as number;
+				} catch (e) {
+					onFail(new InternalApiError("Modal:Fuzzy: Failed to get selected item.", e));
+					return 0;
+				}
+			},
+			updateSuggestions: <T>(m: FuzzySuggestModal<T>, onFail: ErrorCallback = (e) => Env.log.e(e)): void => {
+				try {
+					// @ts-expect-error
+					m.updateSuggestions();
+				} catch (e) {
+					onFail(new InternalApiError("Modal:Fuzzy: Failed to update suggestions.", e));
+				}
+			},
+			setSelectedItem: <T>(m: FuzzySuggestModal<T>, index: number, evt?: MouseEvent | KeyboardEvent, onFail: ErrorCallback = (e) => Env.log.e(e)): void => {
+				try {
+					// @ts-expect-error
+					m.chooser.setSelectedItem(index, evt);
+				} catch (e) {
+					onFail(new InternalApiError("Modal:Fuzzy: Failed to set selected item.", e));
+				}
+			},
+		},
+	},
+
+};

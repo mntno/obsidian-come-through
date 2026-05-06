@@ -2,7 +2,8 @@ import { UniqueID } from "#/data/UniqueID";
 import { CardDeclaration } from "#/declarations/CardDeclaration";
 import { CollectionableAssistant, DeckableDeclarable } from "#/declarations/Collectionable";
 import { Declarable, DeclarableAssistant, DeclarableProperty, OptionalNullableStringDeclarableProperty, StringDeclarableProperty } from "#/declarations/Declarable";
-import { LocalStrictKeys, Obj } from "#/utils/ts";
+import { LocalStrictKeys } from "#/types";
+import { Obj } from "#/utils/ts";
 
 export const IDScope = {
 	Unique: "unique",

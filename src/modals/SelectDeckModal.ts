@@ -1,18 +1,8 @@
-import { DataStore, DeckIDDataTuple } from "#/data/DataStore";
+import { DataProvider } from "#/data/DataProvider";
+import { DeckIDDataTuple } from "#/data/DataStore";
 import { HtmlTag } from "#/utils/dom/constants";
+import { Arr, Str } from "#/utils/ts";
 import { App, SuggestModal } from "obsidian";
-
-const ALL_DECKS = {
-  id: HtmlTag.SELECT.OPTION.Values.NONE,
-  data: {
-    n: "All Decks",
-    p: []
-  }
-};
-
-function isAllDecks(deck: DeckIDDataTuple): boolean {
-  return HtmlTag.SELECT.OPTION.isNone(deck.id);
-}
 
 /**
 	* A `null` value indicates that the user selected "All Decks".
@@ -21,49 +11,67 @@ export type OnChooseCallback = (deck: DeckIDDataTuple | null, evt: MouseEvent | 
 
 export class SelectDeckModal extends SuggestModal<DeckIDDataTuple> {
 
-	private decks: DeckIDDataTuple[];
+	private readonly collections: DeckIDDataTuple[];
 
+	private readonly dataProvider: DataProvider;
 	private readonly onChoose: OnChooseCallback | undefined;
 
 	/**
 		* @param decks If you already have all decks, or if you want to display a subset.
 		*/
-  constructor(
-    app: App,
-    private readonly data: DataStore,
-    decks?: DeckIDDataTuple[],
-    onChoose?: OnChooseCallback) {
-    super(app);
+	constructor(
+		app: App,
+		dataProvider: DataProvider,
+		decks?: DeckIDDataTuple[],
+		onChoose?: OnChooseCallback) {
+		super(app);
 
-    this.setPlaceholder("Select deck");
-		this.decks = [...[ALL_DECKS], ...decks ?? this.data.getAllDecks()];
+		this.dataProvider = dataProvider;
 		this.onChoose = onChoose;
-  }
 
-  getSuggestions(query: string): DeckIDDataTuple[] | Promise<DeckIDDataTuple[]> {
-    return this.decks.filter(deck => deck.data.n.toLowerCase().includes(query.toLowerCase()));
-  }
+		this.setPlaceholder("Select deck");
+		this.collections = [...[SelectDeckModal.ALL_DECKS], ...decks ?? this.dataProvider.getAllCollections()];
+	}
 
-  renderSuggestion(value: DeckIDDataTuple, el: HTMLElement): void {
-    const numberOfCards = this.data.getAllCardsForDeck(isAllDecks(value) ? undefined : value.id).length;
-    el.createEl('div', { text: `${value.data.n}` }).createEl('small', { text: ` (${numberOfCards})` });
-    el.createEl('small', { text: value.data.p.length > 0 ? this.descendants(value) : "" });
-  }
+	getSuggestions(query: string): DeckIDDataTuple[] | Promise<DeckIDDataTuple[]> {
+		return this.collections.filter(deck => deck.data.n.toLowerCase().includes(query.toLowerCase()));
+	}
 
-  onChooseSuggestion(item: DeckIDDataTuple, evt: MouseEvent | KeyboardEvent): void {
-    this.onChoose?.(isAllDecks(item) ? null : item, evt);
-  }
+	renderSuggestion(value: DeckIDDataTuple, el: HTMLElement): void {
+		const numberOfCards = SelectDeckModal.isAllDecks(value)
+			? this.dataProvider.getAllItemsInCollection(this.collections).length
+			: this.dataProvider.getAllItemsInCollectionByID(value.id).length;
 
-  private descendants(deck: DeckIDDataTuple): string {
-    const parentID = deck.data.p.first();
-    if (parentID) {
-      const pp = this.data.getDeck(parentID);
-      if (pp) {
-        const a = this.descendants({ id: parentID, data: pp });
-        return a.length > 0 ? `${a} > ${pp.n}` : pp.n;
-      }
-    }
+		el.createEl("div", { text: `${value.data.n}` }).createEl("small", { text: ` (${numberOfCards})` });
+		el.createEl("small", { text: value.data.p.length > 0 ? this.descendants(value) : Str.EMPTY });
+	}
 
-    return "";
-  }
+	onChooseSuggestion(item: DeckIDDataTuple, evt: MouseEvent | KeyboardEvent): void {
+		this.onChoose?.(SelectDeckModal.isAllDecks(item) ? null : item, evt);
+	}
+
+	private descendants(deck: DeckIDDataTuple): string {
+		const parentID = Arr.firstOrNull(deck.data.p);
+		if (parentID !== null) {
+			const pp = this.dataProvider.getCollection(parentID);
+			if (pp) {
+				const a = this.descendants({ id: parentID, data: pp });
+				return a.length > 0 ? `${a} > ${pp.n}` : pp.n;
+			}
+		}
+
+		return Str.EMPTY;
+	}
+
+	private static ALL_DECKS = {
+		id: HtmlTag.SELECT.OPTION.Values.NONE,
+		data: {
+			n: "All",
+			p: []
+		}
+	};
+
+	private static isAllDecks(deck: DeckIDDataTuple): boolean {
+		return HtmlTag.SELECT.OPTION.isNone(deck.id);
+	}
 }

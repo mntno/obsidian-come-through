@@ -113,7 +113,6 @@ However, as soon as changes are detected, a dialog is shown where you may accept
 ## Roadmap
 
 - More and quicker ways to create content to review.
-- More ways to group defined content and select for review.
 - Scheduler settings.
 
 ## More

@@ -1,5 +1,5 @@
-import { ParsedCard } from "ContentParser";
-import { ReviewItem } from "scheduling/types";
+import { ParsedCard } from "#/ContentParser";
+import { ReviewItem } from "#/scheduling/types";
 
 export interface ReviewState {
 	/** The current item in review.  */

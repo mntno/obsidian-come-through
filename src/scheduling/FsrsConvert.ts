@@ -56,7 +56,7 @@ export const FsrsConvert = {
 			learning_steps: s.ls,
 			reps: s.r,
 			lapses: s.l,
-			state: s.st as State,
+			state: s.st satisfies State,
 			// Check if is `string` rather than if `null`: Type changed from `string | undefined` to `string | null` in 0.5.1, so there may still be `undefined` values around. `TypeConvert.time` only supports `Date`, `string`, `number`: else throws.
 			last_review: Str.is(s.lr) ? TypeConvert.time(s.lr) : undefined,
 		};

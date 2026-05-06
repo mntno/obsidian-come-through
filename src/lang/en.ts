@@ -1,22 +1,27 @@
+import { Arr } from "#/utils/ts";
 import { TFile } from "obsidian";
 
 export const en = {
 	actions: {
-		viewDeclarationsInFile: "View defined content",
+		viewContentInFile: "View defined content",
+		reviewContentInFile: "Review defined content",
 	},
 	commands: {
-		openReview: {
-			name: "Review",
-		},
 		openDecks: {
 			name: "Decks",
 		},
 		generateId: {
 			name: "Create a new id under cursor",
 		},
-		openDeclarations: {
-			// View the current note’s defined review content.
-			name: "View content defined by the current note’s declarations",
+		global: {
+			review: "Review",
+			reviewCollection: "Review deck",
+		},
+		view: {
+			markdown: {
+				content: "View content defined by the current note",
+				review: "Review content defined by the current note",
+			}
 		}
 	},
 	settings: {
@@ -47,8 +52,17 @@ export const en = {
 	},
 	views: {
 		declarations: {
-			title: (file?: TFile) =>  file ? `Defined content in “${file.basename}”` : "Defined content",
-			fileNotSet: "The note to show content definitions from is unknown."
+			title: (file: TFile[] = []) => {
+				return Arr.isNonEmpty(file) ? `Defined content in ${file.length == 1 ? Arr.firstOrThrow(file).basename : `${file.length} files`}` : "Defined content";
+			},
+			fileNotSet: "No notes to show content definitions from."
+		},
+		collections: {
+			reviewAll: "Review units in all decks",
+			reviewUnassigned: "Review unassigned units",
+			reviewCollection: (name: string) => `Review collection "${name}"`,
+			reviewItemsIn: (name: string) => `Review items in "${name}"`,
+			addNew: "Add new",
 		}
 	},
 	review: {

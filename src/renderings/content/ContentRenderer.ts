@@ -17,6 +17,12 @@ export function createRenderConfig(_settings: PluginSettings): ContentProcessorC
 	};
 }
 
+export type ContentRenderOptions = {
+	sourcePath?: string;
+	processors?: ContentRendererProcessor[];
+	timeoutMs?: number;
+};
+
 export class ContentRenderer extends RecycleComponent {
 
 	private readonly app: App;
@@ -97,7 +103,7 @@ export class ContentRenderer extends RecycleComponent {
 		* @param options
 		* @throws Throws a {@link TimeoutError} if the promise does not settle within the specified timeout (default 4000ms).
 		*/
-	public async render(markdown: string, el: HTMLElement, options?: { sourcePath?: string, processors?: ContentRendererProcessor[], timeoutMs?: number }): Promise<void> {
+	public async render(markdown: string, el: HTMLElement, options?: ContentRenderOptions): Promise<void> {
 		const {
 			sourcePath = this.file?.path,
 			processors = [],
@@ -106,7 +112,7 @@ export class ContentRenderer extends RecycleComponent {
 
 		Env.log.d("ContentRenderer:render: processors", processors, sourcePath);
 
-		if (!sourcePath) {
+		if (sourcePath === undefined) {
 			el.createSpan({ text: "Failed to render." });
 			console.error("Could not render markdown. `sourcePath` not set.");
 			return;
@@ -134,17 +140,17 @@ export class ContentRenderer extends RecycleComponent {
 		// default run first
 		const allProcessors = [...this.defaultProcessors, ...this.customProcessors, ...processors];
 
-		Env.log.view(`ContentRenderer:render: Running ${allProcessors.filter(p => p.isPreProcessor()).length} pre processors: ${allProcessors.filter(p => p.isPreProcessor()).map(a => a.constructor.name).join(", ")}`);
+		Env.dev?.log.view(`ContentRenderer:render: Running ${allProcessors.filter(p => p.isPreProcessor()).length} pre processors: ${allProcessors.filter(p => p.isPreProcessor()).map(a => a.constructor.name).join(", ")}`);
 		for (const processor of allProcessors) {
 			if (processor.isPreProcessor())
 				processor.handleMarkdown(preParameter);
 		}
 
 		Env.log.view("ContentRenderer:render: calling `MarkdownRenderer`, timeout", timeoutMs);
-		await Async.withTimeout(MarkdownRenderer.render(this.app, preParameter.markdown, el, sourcePath, this.recycleComponent), timeoutMs);
+		await Async.withTimeout(MarkdownRenderer.render(this.app, preParameter.markdown, el, sourcePath, this.recycleComponent), timeoutMs, el);
 		Env.log.view("\tRendering done.");
 
-		Env.log.view(`ContentRenderer:render: Running ${allProcessors.filter(p => p.isPostProcessor()).length} post processors: ${allProcessors.filter(p => p.isPostProcessor()).map(a => a.constructor.name).join(", ")}`);
+		Env.dev?.log.view(`ContentRenderer:render: Running ${allProcessors.filter(p => p.isPostProcessor()).length} post processors: ${allProcessors.filter(p => p.isPostProcessor()).map(a => a.constructor.name).join(", ")}`);
 		for (const processor of allProcessors) {
 			if (processor.isPostProcessor())
 				processor.handleHtml(postParameter);

@@ -1,10 +1,13 @@
-import t from "Localization";
-import { ReviewItemInfoModal } from "modals/ReviewItemInfoModal";
+import { Env } from "#/env";
+import { t } from "#/Localization";
+import { ReviewItemInfoModal } from "#/modals/ReviewItemInfoModal";
+import { ReviewItemInfo } from "#/scheduling/ReviewItemInfo";
+import { Ratings, ReviewSortOrder } from "#/scheduling/types";
+import { Api } from "#/utils/obs/api";
+import { ReviewView } from "#/views/review/ReviewView";
 import { App, Command } from "obsidian";
-import { ReviewItemInfo } from "scheduling/ReviewItemInfo";
-import { Ratings, ReviewSortOrder } from "scheduling/types";
-import { ReviewView } from "views/review/ReviewView";
 
+/** Commands that only appear when a {@link ReviewView} is open. */
 export const ReviewViewCommand = {
 
 	setSortOrder: (app: App): Command[] => {
@@ -17,7 +20,7 @@ export const ReviewViewCommand = {
 					const reviewView = app.workspace.getActiveViewOfType(ReviewView);
 					if (reviewView) {
 						if (!checking)
-							reviewView.setSortOrder(sortOrder);
+							reviewView.setSortOrder(sortOrder).catch(Env.catch);
 						return true;
 					}
 					return false;
@@ -39,7 +42,7 @@ export const ReviewViewCommand = {
 					const reviewView = getFacade(app);
 					if (reviewView !== null && reviewView.rate !== null) {
 						if (!checking)
-							reviewView.rate(rating);
+							reviewView.rate(rating).catch(Env.catch);
 						return true;
 					}
 					return false;
@@ -58,7 +61,7 @@ export const ReviewViewCommand = {
 				const reviewView = getFacade(app);
 				if (reviewView !== null && reviewView.openSourceFile !== null) {
 					if (!checking)
-						reviewView.openSourceFile();
+						reviewView.openSourceFile(Api.Event.paneType(app)).catch(Env.catch);
 					return true;
 				}
 				return false;

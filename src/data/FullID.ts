@@ -116,7 +116,7 @@ export class FullID implements FullID {
 
   public cardIDOrThrow() {
     this.throwIfNoCardID();
-    return this.cardID!;
+    return this.cardID;
   }
 
   public throwIfNoNoteID() {
@@ -126,7 +126,7 @@ export class FullID implements FullID {
 
   public throwIfNoCardID() {
     if (!this.cardID)
-      throw new Error(`Invalid ID "${this}": no card ID.`);
+      throw new Error(`Invalid ID "${this.toString()}": no card ID.`);
   }
 
   public get cardSide(): string | undefined {

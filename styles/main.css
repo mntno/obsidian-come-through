@@ -1,5 +1,7 @@
 @import "declaration.css";
 @import "modal.css";
+@import "utilities.css";
 @import "view.css";
-@import "definedContentView.css";
-@import "reviewView.css";
+@import "viewCollection.css";
+@import "viewDefinedContent.css";
+@import "viewReview.css";

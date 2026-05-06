@@ -5,6 +5,7 @@ import { DeclarationInfo, DeclarationParser, PostParseInfo } from "#/declaration
 import { CardDeclarable, ExplicitDeclarationAssistant } from "#/declarations/ExplicitDeclaration";
 import { Env } from "#/env";
 import { asNoteID, isString } from "#/TypeAssistant";
+import { Api } from "#/utils/obs/api";
 import { UNARY_UNION_SUPPRESS } from "#/utils/ts";
 import { App, CachedMetadata, Editor, FileManager, TAbstractFile, TFile } from "obsidian";
 
@@ -271,7 +272,7 @@ export class SyncManager {
 						const key = info.section.id;
 						if (isString(key)) {
 							// This seems to work fine while cursor is in the frontmatter (so no need to skip this declaration now because of that).
-							await fileManager.processFrontMatter(file, (fm) => fm[key] = completeDeclaration).catch(console.error);
+							await fileManager.processFrontMatter(file, (fm) => Api.Frontmatter.setValue(fm, key, completeDeclaration)).catch(console.error);
 						}
 						else {
 							Env.assert(key, "Expected section id to be set to the frontmatter YAML key assinged to the declaration.");

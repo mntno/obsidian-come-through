@@ -9,6 +9,7 @@ import { asNoteID, fullIDFromDeclaration } from "#/TypeAssistant";
 import { UnexpectedUndefinedError } from "#/utils/errors";
 import { FileParser, OffsetRange, SectionRange } from "#/utils/obs/FileParser";
 import { App, CachedMetadata, CacheItem, FrontMatterCache, HeadingCache, SectionCache, TFile } from "obsidian";
+import { Api } from "utils/obs/api";
 
 /**
  * Contains auxiliary information collected during the parsing process.
@@ -240,7 +241,8 @@ export class DeclarationParser extends FileParser {
 		*/
 	protected static getDeclarationFromFrontmatter(frontmatter: FrontMatterCache, noteID: NoteID, parseInfo?: PostParseInfo) {
 		for (const key of DeclarationConstants.Frontmatter.KEYS) {
-			const declaration = DeclarationParser.declarationFromFrontmatter(frontmatter[key], (incomplete, location) => {
+			const maybeDeclaration = Api.Frontmatter.recordFrom(frontmatter, key);
+			const declaration = maybeDeclaration === undefined ? null : DeclarationParser.declarationFromFrontmatter(maybeDeclaration, (incomplete, location) => {
 				parseInfo?.incompleteDeclarationInfos.push({
 					noteID: noteID,
 					declaration: incomplete,

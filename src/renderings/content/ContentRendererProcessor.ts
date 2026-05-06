@@ -74,7 +74,7 @@ export class ContentRendererPostProcessorAssistant {
 	}
 
 	public get doc() {
-		return Doc.get(this.param.el);
+		return Doc.from(this.param.el);
 	}
 
 	public get el() {

@@ -1,4 +1,4 @@
-import { App, CacheItem, HeadingCache, Pos, SectionCache, TFile } from "obsidian";
+import { App, CacheItem, HeadingCache, Loc, Pos, SectionCache, TFile } from "obsidian";
 import { UNARY_UNION_SUPPRESS } from "#/utils/ts";
 
 interface FileParserErrorOptions extends ErrorOptions {
@@ -100,6 +100,15 @@ export abstract class FileParser {
 
 	protected static createFrontmatterSectionWithKey(key: string): ExternalSectionCache {
 		return { ...FrontmatterSection, ... { id: key } };
+	}
+
+	protected static createCacheItem(start: Loc, end?: Loc): CacheItem {
+		return {
+			position: {
+				start: start,
+				end: end !== undefined ? end : start,
+			}
+		} satisfies CacheItem;
 	}
 
 	protected static isCodeSection(section: SectionCache) {

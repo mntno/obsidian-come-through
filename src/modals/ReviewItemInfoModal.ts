@@ -53,8 +53,11 @@ export class ReviewItemInfoModal extends BaseModal {
 		this.createSetting("Last reviewed")
 			.controlEl.append(lastReviewDate === null ? "This is the first review." : createFragment(f => {
 				f.appendText(DateTime.toString(lastReviewDate));
-				f.createEl("br");
-				f.appendText(DateTime.diffString(this.now, lastReviewDate));
+				const diff = DateTime.diffString(this.now, lastReviewDate);
+				if (diff !== null) {
+					f.createEl("br");
+					f.appendText(diff);
+				}
 			}));
 
 		this.createSetting("Scheduled days")
@@ -89,9 +92,10 @@ export class ReviewItemInfoModal extends BaseModal {
 			.setDesc(`This review unit’s due date.`)
 			.controlEl.append(createFragment(f => {
 				f.appendText(this.info.due);
-				if (isDue) {
+				const diff = DateTime.diffString(this.now, this.info.dueDate);
+				if (isDue && diff !== null) {
 					f.createEl("br");
-					f.appendText(DateTime.diffString(this.now, this.info.dueDate));
+					f.appendText(diff);
 				}
 			}));
 	};

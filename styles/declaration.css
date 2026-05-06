@@ -32,8 +32,8 @@
 	color: var(--color-red);
 }
 
-.block-language-comethrough table,
-.block-language-ct table {
+.callout.block-language-comethrough table,
+.callout.block-language-ct table {
 	margin-left: auto;
 	margin-right: auto;
 	width: 100%;
@@ -41,9 +41,16 @@
 	table-layout: auto;
 }
 
-.block-language-ct table th:first-child,
-.block-language-ct table td:first-child {
-	width: 40%;
+/* The two next rules use a CSS trick to make the first column adjust to content width and the rest of the columns to fill the available space */
+.block-language-comethrough table tr > :first-child,
+.block-language-ct table tr > :first-child {
+	width: 1%;
+	white-space: nowrap;
+}
+
+.block-language-comethrough table tr > :not(:first-child),
+.block-language-ct table tr > :not(:first-child) {
+	width: 100%;
 }
 
 .block-language-comethrough td.select-deck-cell,

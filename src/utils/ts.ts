@@ -1,26 +1,61 @@
-import { Env } from "env";
-import { UnsignedInteger } from "types";
-import { TimeoutError } from "utils/errors";
+import { Env } from "#/env";
+import { StrictKeys, UnsignedInteger } from "#/types";
+import { Win } from "#/utils/dom/dom";
+import { TimeoutError } from "#/utils/errors";
 
-/** Strips index signatures to ensure only hard-coded properties are allowed in the union. */
-export type StrictKeys<T> = keyof {
-	[K in keyof T as string extends K ? never : number extends K ? never : K]: unknown;
-};
-
-/** Extract only the keys present in T1 that are not in T2 using {@link StrictKeys}. */
-export type LocalStrictKeys<T1, T2> = Exclude<StrictKeys<T1>, StrictKeys<T2>>;
+type ArrMatch<T> =
+	| { kind: "empty" }
+	| { kind: "one"; item: T }
+	| { kind: "many"; items: T[] };
 
 export const Arr = {
-	firstOrNull: <T>(a: Array<T>): T | null => a.first() ?? null,
-	nonEmpty: <T>(v: T[] | unknown): v is Array<T> => Array.isArray(v) && v.length > 0,
+
+	is: <T>(v: unknown): v is T[] => Array.isArray(v),
+	isReadonly: <T>(v: unknown): v is ReadonlyArray<T> => Array.isArray(v),
+
+	from: <T>(v: T[] | T): T[] => Arr.is(v) ? v : [v],
+	readonlyFrom: <T>(v: ReadonlyArray<T> | T): ReadonlyArray<T> => Arr.isReadonly(v) ? v : [v],
+
+	firstOrThrow: <T>(a: ReadonlyArray<T>): T => {
+		if (a.length === 0) throw new RangeError("Array is empty");
+		return a[0]!;
+	},
+
+	firstOrNull: <T>(a: T[]): T | null => a[0] !== undefined ? a[0] : null,
+
+	/**
+		* Checks whether {@link v} is a non-empty array.
+		* @returns `true` if {@link v} is a non-empty array, otherwise `false`.
+		*/
+	isNonEmpty: <T>(v: unknown): v is T[] => Arr.is(v) && v.length > 0,
+
+	isEmpty: <T>(a: T[] | Readonly<T[]>): boolean => Arr.is(a) && a.length === 0,
+	/**
+		* Returns {@link v} if it is a non-empty array, otherwise `undefined`.
+		* @returns The original array if non-empty, else `undefined`.
+		*/
+	nonEmpty: <T>(a: T[]): T[] | undefined => Arr.isNonEmpty(a) ? a : undefined,
+
 	toMutable: <T>(a: readonly T[]): T[] => [...a],
+
 	clear: <T>(a: T[]): void => { a.length = 0; },
+
+	orEmpty: <T>(a: T[] | null | undefined): T[] => a === undefined || a === null ? [] : a,
+
+	match: <T>(a: T[] | null | undefined): ArrMatch<T> => {
+		if (a === undefined || a === null || a.length === 0)
+			return { kind: "empty" };
+		if (a.length === 1)
+			return { kind: "one", item: a[0]! };
+		return { kind: "many", items: a };
+	},
 };
 
 export const Async = {
 	/**
 	 * @param promise The promise to execute
 	 * @param timeoutMs The timeout in milliseconds
+	 * @param elOrDoc Used to retrieve the window object for the timeout
 	 * @returns A new promise that will resolve with the original promise's result or reject with {@link Err.TimeoutError}
 	 * @throws Throws a {@link Err.TimeoutError} if the promise does not settle within the specified timeout
 	 *
@@ -35,12 +70,12 @@ export const Async = {
 	 * }
 	 * ```
 	 */
-	withTimeout: <T>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
+	withTimeout: <T>(promise: Promise<T>, timeoutMs: number, elOrDoc: HTMLElement | Document): Promise<T> => {
 		// Create a promise that rejects in <timeoutMs> milliseconds
 		const timeoutPromise = new Promise<never>((_, reject) => {
-			setTimeout(() => {
+			Win.Timeout.set(elOrDoc, timeoutMs, () => {
 				reject(new TimeoutError(`Operation timed out after ${timeoutMs}ms`));
-			}, timeoutMs);
+			});
 		});
 
 		// Race the input promise against the timeout promise
@@ -55,6 +90,7 @@ export type BoolStr = "true" | "false";
 
 export const Bln = {
 	is: (value: unknown): value is boolean => typeof value === "boolean",
+	/** @returns `true` if {@link value} is a `boolean` and its value is `true`. */
 	isTrue: (value: unknown): value is boolean => typeof value === "boolean" && value === true,
 	TRUE_STR: "true" as BoolStr,
 	isTrueStr: (value: unknown): boolean => typeof value === "string" && value === Bln.TRUE_STR,
@@ -62,7 +98,9 @@ export const Bln = {
 
 
 export const Err = {
-	toError: (e: unknown): Error => e instanceof Error ? e : new Error(String(e)),
+	/** `Err.is(v, ErrorClassType)` */
+	is: <T extends Error>(v: unknown, ctor: new (...args: never[]) => T): v is T => v instanceof ctor,
+	toError: (v: unknown): Error => v instanceof Error ? v : new Error(String(v)),
 };
 
 export const KeyValue = {
@@ -76,6 +114,8 @@ export const Num = {
 	},
 
 	isNaN: (value: unknown) => Number.isNaN(value),
+
+	isZero: (value: unknown) => Num.is(value) && value === 0,
 
 	UInt: {
 		assert: (n: number) => Env.assert(isUnsignedInteger(n)),
@@ -91,6 +131,7 @@ export const Num = {
 
 export const Null = {
 	is: (value: unknown): value is null => value === null, // typeof value === "object" && !Str.is(value) && !Num.is(value) && !Bln.is(value)
+	fromUndefined: <T>(value: T | undefined): T | null => value === undefined ? null : value,
 };
 
 export const Obj = {
@@ -103,6 +144,8 @@ export const Obj = {
 	is: (value: unknown): value is object => {
 		return typeof value === "object" && value !== null; // In JavaScript runtime, `null` is an object. In TypeScript, with `strictNullChecks`, it is not.
 	},
+
+	try: (value: unknown) => Obj.is(value) ? value : null,
 
 	/**
 		* Trims all string values of top-level properties of {@link obj} in place (non-recursive).
@@ -117,6 +160,14 @@ export const Obj = {
 		}
 	},
 
+	numKeys: <T extends Record<string, unknown>>(obj: T): number => {
+		return Object.keys(obj).length;
+	},
+
+	nonEmpty: <T extends Record<string, unknown>>(obj: T): boolean => {
+		return Object.keys(obj).length > 0;
+	},
+
 	/**
 		* @param obj
 		* @param key
@@ -129,7 +180,7 @@ export const Obj = {
 		...callbacks: Array<(value: T[K], obj: Record<string, unknown>, key: K) => boolean>
 	): boolean => {
 
-		if (!Obj.is(obj) || !Object.hasOwn(obj, key as PropertyKey))
+		if (!Obj.is(obj) || !Object.hasOwn(obj, key))
 			return false;
 
 		return callbacks.every((cb) => cb(obj[key] as T[K], obj, key));
@@ -148,6 +199,25 @@ export const Obj = {
 		value: T[K]
 	): void => {
 		obj[key] = value;
+	},
+};
+
+/** Set convenience functions. */
+export const St = {
+	is: <T>(v: unknown): v is Set<T> => v instanceof Set,
+	isReadonly: <T>(v: unknown): v is ReadonlySet<T> => v instanceof Set,
+	isEmpty: <T>(a: Set<T> | ReadonlySet<T>): boolean => a.size === 0,
+
+	fromArr: <T>(a: T[] | null | undefined): Set<T> => a !== null && a !== undefined ? new Set(a) : new Set(),
+
+	/** A `Set` is not serializable: `JSON.stringify(new Set([1, 2, 3])) → "{}"` */
+	toArr: <T>(a: Set<T> | ReadonlySet<T>): T[] => Array.from(a),
+
+	add: <T>(s: Set<T>, items: T[] | null | undefined): Set<T> => {
+		if (items !== null && items !== undefined)
+			for (const item of items)
+				s.add(item);
+		return s;
 	},
 };
 
@@ -178,7 +248,7 @@ export const Str = {
 		* Returns `value` if it is a non-empty string, otherwise `undefined`.
 		*
 		* @param value The value to check.
-		* @returns The original string if non-empty, or `undefined`.
+		* @returns The original string if non-empty, else `undefined`.
 		*/
 	nonEmpty: (value: unknown): string | undefined => typeof value === "string" && value !== "" ? value : undefined,
 
@@ -194,6 +264,25 @@ export const Str = {
 	toIsoStringOrNull: (date: Date | undefined) => {
 		return date !== undefined ? date.toISOString() : null
 	},
+};
+
+export const Union = {
+	/**
+		* Exhaustive pattern matching for Discriminated Unions.
+		*
+		* @param union The union object.
+		* @param discriminant The key used for narrowing (e.g., "type").
+		* @param handlers A map of handlers for every possible value of the discriminant.
+		*/
+	match: <U extends Record<D, string | number>, D extends keyof U, R>(
+		union: U,
+		discriminant: D,
+		handlers: { [V in U[D]]: (val: Extract<U, Record<D, V>>) => R }
+	): R => {
+		const key = union[discriminant];
+		const handler = handlers[key] as (val: unknown) => R;
+		return handler(union);
+	}
 };
 
 function isUnsignedInteger(value: unknown): value is UnsignedInteger {
@@ -241,3 +330,12 @@ function isUnsignedInteger(value: unknown): value is UnsignedInteger {
 	* }
 	*/
 export const UNARY_UNION_SUPPRESS = "suppress" as const;
+
+export type IterationAction = {
+	/** Whether to include the file in the result set. */
+	include: boolean;
+	/** Whether to stop the recursion immediately. */
+	stop: boolean;
+};
+
+export type IterationCallback<T> = (file: T, index: number, currentResults: T[]) => boolean | IterationAction;

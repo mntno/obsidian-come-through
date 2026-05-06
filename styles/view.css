@@ -1,30 +1,56 @@
-
-
-div.come-through-workspace-leaf-content .view-content {
-	padding: 0;
-	overflow: hidden;
-}
-
-/* <div class="markdown-reading-view" style="width: 100%; height: 100%;"> */
-div.come-through-workspace-leaf-content .markdown-reading-view {
-	width: 100%;
-	height: 100%;
-}
-
-div.come-through-workspace-leaf-content :lang(th) {
-  font-size: 1.25rem;
-}
-
-/* Apr 25, 2026: Obsidian zeroes --view-top-spacing for markdown views via:
- *
- *   .workspace-leaf-content[data-type="markdown"] {
- *     --view-top-spacing: 0;
- *   }
- *
- * Custom views have a different data-type and do not get this automatically.
- * Without it, double top spacing occurs when "Full screen" or "Floating
- * navigation" is enabled (Appearance, mobile v1.11.6+).
- */
 div.come-through-workspace-leaf-content {
-  --view-top-spacing: 0;
+
+	/* Apr 25, 2026: Obsidian zeroes --view-top-spacing for markdown views via:
+	 *
+	 *   .workspace-leaf-content[data-type="markdown"] {
+	 *     --view-top-spacing: 0;
+	 *   }
+	 *
+	 * Custom views have a different data-type and do not get this automatically.
+	 * Without it, double top spacing occurs when "Full screen" or "Floating
+	 * navigation" is enabled (Appearance, mobile v1.11.6+).
+	 */
+	--view-top-spacing: 0;
+
+	.view-content {
+		padding: 0;
+		overflow: hidden;
+
+		/* <div class="markdown-reading-view" style="width: 100%; height: 100%;"> */
+		div.markdown-reading-view {
+			width: 100%;
+			height: 100%;
+
+			div.markdown-preview-view {
+
+				div.markdown-preview-sizer {
+					/** Add extra scroll */
+					padding-bottom: var(--ct-scroll-padding, 0px);
+					min-height: var(--ct-scroll-min-height, 0px);
+				}
+			}
+		}
+
+		button {
+
+			/** `.clickable-icon`: Parent button containers for SVG button icons */
+			&.clickable-icon {
+				--icon-color: var(--link-color);
+				/*--icon-color-hover: var(--text-normal);
+				--icon-color-active: var(--text-normal);
+				--icon-color-focus: var(--text-normal);*/
+				--icon-size: var(--icon-m);
+				--icon-stroke: var(--icon-m-stroke-width);
+			}
+
+			&.clickable-icon:hover {
+				/* Default: var(--background-modifier-hover); */
+				background-color: transparent;
+			}
+		}
+	}
+
+	:lang(th) {
+		font-size: 1.25rem;
+	}
 }

@@ -21,18 +21,13 @@
 
 		"moduleResolution": "bundler",
 		"isolatedModules": true,
-
-		"importHelpers": true,
+		"verbatimModuleSyntax": false,
 
 		"noUncheckedIndexedAccess": true,
 		"noImplicitOverride": true,
 		"noPropertyAccessFromIndexSignature": true,
 		"erasableSyntaxOnly": false,
 		"exactOptionalPropertyTypes": false,
-
-		// For ESLint to handle:
-		"allowUnreachableCode": true,
-		"allowUnusedLabels": true,
 	},
 	"include": [
 		"./src/**/*.ts"

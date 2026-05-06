@@ -1,7 +1,7 @@
 import { CollectionableAssistant, DeckableDeclarable } from "#/declarations/Collectionable";
 import { CommandName, Commands } from "#/declarations/CommandNames";
-import { LocalStrictKeys, Obj, Str } from "#/utils/ts";
-
+import { LocalStrictKeys } from "#/types";
+import { Obj, Str } from "#/utils/ts";
 /**
  * @abstract All commands extend this interface.
  */

@@ -6,11 +6,11 @@ export type CreateElParam<K extends keyof HTMLElementTagNameMap> = {
 	tag: K,
 	/** Applies to the wrapped element. */
 	o?: DomElementInfo | string,
-	/** The wrappers parent. */
+	/** The wrapper's parent. */
 	parent: HTMLElement,
 	/** Wrapper classes to be added to the wrapper element. */
 	wrapperClasses?: string[],
-	/** If `true`, the default class for wrappers will not be added to the wrapper's class list. */
+	/** If `true`, the default CSS class for wrappers will not be added to the wrapper's class list. */
 	skipWrapperClass?: boolean,
 	/** Callback to be executed after the element is created. */
 	createdCallback?: (el: HTMLElementTagNameMap[K]) => void,
@@ -27,14 +27,14 @@ export function createWrappedEl<K extends keyof HTMLElementTagNameMap>(options: 
 		createdCallback,
 	} = options;
 
-	const opt: DomElementInfo | undefined = Arr.nonEmpty(wrapperClasses) ? { cls: wrapperClasses } : undefined;
+	const opt: DomElementInfo | undefined = Arr.isNonEmpty(wrapperClasses) ? { cls: wrapperClasses } : undefined;
 
 	const wrappedEl = skipWrapperClass ? parent.createDiv(opt) : createElWrapper(
 		parent,
 		tag,
 		opt,
 	);
-	return wrappedEl.createEl(tag, o, createdCallback);
+	return El.create(wrappedEl, tag, o, createdCallback);
 }
 
 /**
@@ -47,9 +47,9 @@ export function createElWrapper<K extends keyof HTMLElementTagNameMap>(parent: H
 	const clsToAdd = CssClass.wrapperClassForEl(appendPara ? "p" : tag);
 	const finalOptions: DomElementInfo = o ? { ...o } : {};
 
-	if (Str.nonEmpty(finalOptions.cls))
+	if (Str.isNonEmpty(finalOptions.cls))
 		finalOptions.cls = `${clsToAdd} ${finalOptions.cls}`;
-	else if (Arr.nonEmpty(finalOptions.cls))
+	else if (Arr.isNonEmpty(finalOptions.cls))
 		finalOptions.cls = [clsToAdd, ...finalOptions.cls];
 	else
 		finalOptions.cls = clsToAdd;
@@ -68,19 +68,51 @@ export function createElWrapper<K extends keyof HTMLElementTagNameMap>(parent: H
 	}
 }
 
-/**
- * This is the string-based version of {@link createElWrapper}. It mimics how
- * Obsidian/CodeMirror wraps elements in a classed `<div>`. For example, an
- * `<audio>` tag string would be returned wrapped in a `<div class="el-audio">`.
- *
- * @param tag The tag name at the root of {@link html}.
- * @param html The HTML string to wrap.
- * @param appendPara See {@link createElWrapper}.
- * @returns The wrapped HTML string.
- */
-export function createElWrapperHtml<K extends keyof HTMLElementTagNameMap>(tag: K, html: string, appendPara = false) {
-	if (appendPara)
-		return `<div class="${CssClass.wrapperClassForEl("p")}"><p>${html}</p></div>`;
-	else
-		return `<div class="${CssClass.wrapperClassForEl(tag)}">${html}</div>`;
-}
+export const El = {
+	/**
+	 * Uses Obsidian methods for 'div', 'span', and 'svg'
+	 *
+	 * ```
+	 * interface Node {
+	 *    createEl<K extends keyof HTMLElementTagNameMap>(tag: K, o?: DomElementInfo | string, callback?: (el: HTMLElementTagNameMap[K]) => void): HTMLElementTagNameMap[K];
+	 *    createDiv(o?: DomElementInfo | string, callback?: (el: HTMLDivElement) => void): HTMLDivElement;
+	 *    createSpan(o?: DomElementInfo | string, callback?: (el: HTMLSpanElement) => void): HTMLSpanElement;
+	 *    createSvg<K extends keyof SVGElementTagNameMap>(tag: K, o?: SvgElementInfo | string, callback?: (el: SVGElementTagNameMap[K]) => void): SVGElementTagNameMap[K];
+	 * }
+	 * ```
+	 */
+	create: <K extends keyof HTMLElementTagNameMap>(parent: HTMLElement, tag: K, o?: DomElementInfo | string, createdCallback?: (el: HTMLElementTagNameMap[K]) => void): HTMLElementTagNameMap[K] => {
+		let el: HTMLElement;
+
+		if (tag === "div") {
+			el = parent.createDiv(o, createdCallback as (el: HTMLDivElement) => void);
+		} else if (tag === "span") {
+			el = parent.createSpan(o, createdCallback as (el: HTMLSpanElement) => void);
+		} else if (tag as string === "svg") {
+			throw new Error("SVG is not implemented");
+		} else {
+			el = parent.createEl(tag, o, createdCallback);
+		}
+
+		return el as HTMLElementTagNameMap[K];
+	},
+
+	/**
+	 * This is the string-based version of {@link createElWrapper}. It mimics how
+	 * Obsidian/CodeMirror wraps elements in a classed `<div>`. For example, an
+	 * `<audio>` tag string would be returned wrapped in a `<div class="el-audio">`.
+	 *
+	 * @param tag The tag name at the root of {@link html}.
+	 * @param html The HTML string to wrap.
+	 * @param appendPara See {@link createElWrapper}.
+	 * @returns The wrapped HTML string.
+	 */
+	createWrapper: {
+		html: <K extends keyof HTMLElementTagNameMap>(tag: K, html: string, appendPara = false) => {
+			if (appendPara)
+				return `<div class="${CssClass.wrapperClassForEl("p")}"><p>${html}</p></div>`;
+			else
+				return `<div class="${CssClass.wrapperClassForEl(tag)}">${html}</div>`;
+		},
+	},
+};

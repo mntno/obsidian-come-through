@@ -4,6 +4,7 @@ import { DeclarationParser } from "#/declarations/DeclarationParser";
 import { IDScope } from "#/declarations/ExplicitDeclaration";
 import { asNoteID, fullIDFromDeclaration } from "#/TypeAssistant";
 import { UnexpectedUndefinedError } from "#/utils/errors";
+import { Api } from "#/utils/obs/api";
 import { FullSectionRange, SectionRange } from "#/utils/obs/FileParser";
 import { App, CachedMetadata, HeadingCache, SectionCache, TFile } from "obsidian";
 
@@ -137,8 +138,6 @@ export class ContentParser extends DeclarationParser {
 						// Should work for file-scoped IDs.
 						return idContentInfo.id.isEqual(id, true);
 				}
-
-				throw new Error(`Unrecognized ID scope for ID: ${idContentInfo.id}`);
 			},
 			isDone: (idContentInfo, maybeParsedCard) => {
 				if (!this.isComplete(maybeParsedCard))
@@ -151,8 +150,6 @@ export class ContentParser extends DeclarationParser {
 					case IDScope.Note:
 						return maybeParsedCard.frontID.isEqual(id, true);
 				}
-
-				throw new Error(`Unrecognized ID scope for ID: ${idContentInfo.id}`);
 			}
 		};
 
@@ -292,8 +289,9 @@ export class ContentParser extends DeclarationParser {
 		// Look for a declaration in the frontmatter
 		if (cache.frontmatter) {
 			for (const key of DeclarationConstants.Frontmatter.KEYS) {
-				const declaration = ContentParser.declarationFromFrontmatter(cache.frontmatter[key]);
-				if (declaration) {
+				const maybeDeclaration = Api.Frontmatter.recordFrom(cache.frontmatter, key);
+				const declaration = maybeDeclaration !== undefined ? ContentParser.declarationFromFrontmatter(maybeDeclaration) : null;
+				if (declaration !== null) {
 					cardInfos.push({
 						id: fullIDFromDeclaration(declaration, noteID),
 						scope: declaration.idScope,

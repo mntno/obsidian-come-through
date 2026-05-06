@@ -1,0 +1,76 @@
+div.come-through-workspace-leaf-content[data-type='come-through-view-coll'] div.markdown-reading-view {
+
+	/** Make the table's parent's margin same as the normal content */
+	--container-table-margin: var(--content-margin);
+
+	.markdown-preview-view {
+
+		div.icon {
+			display: block;
+			margin: 0 auto;
+			width: 16%;
+			max-width: 140px;
+
+			svg {
+				width: 100%;
+				height: auto;
+			}
+		}
+
+		table {
+			width: 100%;
+
+			td,
+			th {
+				vertical-align: middle;
+				/** Override `--table-column-min-width` */
+				min-width: unset;
+				padding: var(--size-4-2);
+			}
+
+			/* Shrink this columns to their content width to allow space for the other. */
+			td:nth-child(1),
+			th:nth-child(1),
+			td:nth-child(4),
+			th:nth-child(4),
+			td:nth-child(5),
+			th:nth-child(5) {
+				width: 1%;
+			}
+		}
+
+		/** First button after table */
+		.el-table+.el-button button {
+			margin-top: var(--size-4-3);
+			margin-bottom: var(--size-4-8);
+		}
+	}
+
+	/*
+			Default: padding: var(--file-margins);
+
+				--file-margins: var(--file-margins-y) var(--file-margins-x);
+		*/
+	.markdown-preview-view.is-readable-line-width {
+
+		/*--file-margins: 1rem 0 0 0;*/
+		padding: var(--file-margins-y) 0;
+
+		.markdown-preview-sizer {
+			> :not(.el-table) {
+				margin: 0 var(--file-margins-x)
+			}
+		}
+
+		.el-table {
+
+			/* Override `--max-width`, which is less than 100%, so that when the available horizontal space is less than `--line-width`, the table will fill the whole width. */
+			max-width: 100%;
+			padding: 0;
+			width: var(--line-width);
+
+			/** Make the table scroll horizontally if it overflows */
+			overflow-x: auto;
+		}
+	}
+}

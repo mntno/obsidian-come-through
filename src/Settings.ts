@@ -11,33 +11,33 @@ export interface PluginSettings {
 	/** Defines the time duration in seconds after which "removed" metadata items are eligible for permanent deletion. Items with a "removed date" property older than the current time minus this threshold will be purged. Must be a non-negative integer. */
 	removedItemsPurgeThreshold: number;
 	defaultScheduler: string;
-  schedulers: Record<string, SchedulerSetting>;
+	schedulers: Record<string, SchedulerSetting>;
 }
 
 export interface SchedulerConfigSettingItem {
-  enableFuzz: boolean;
+	enableFuzz: boolean;
 }
 
 export interface FixedIntervalSchedulerConfigSettingItem extends SchedulerConfigSettingItem {
-  intervalMin: number;
+	intervalMin: number;
 }
 
 export interface FsrsSchedulerConfigSettingItem extends SchedulerConfigSettingItem {
-  reviewSortOrder: string;
+	reviewSortOrder: string;
 }
 
 export interface FsrsScheduler {
-  type: "fsrs";
-  config: FsrsSchedulerConfigSettingItem;
+	type: "fsrs";
+	config: FsrsSchedulerConfigSettingItem;
 }
 
 export interface FixedIntervalScheduler {
-  type: "fixedInterval";
-  config: FixedIntervalSchedulerConfigSettingItem;
+	type: "fixedInterval";
+	config: FixedIntervalSchedulerConfigSettingItem;
 }
 
 export type SchedulerSetting = FsrsScheduler | FixedIntervalScheduler;
-const SCHEDULER_ID_DEFUALT = "default";
+const SCHEDULER_ID_DEFAULT = "default";
 const DEFAULT_SCHEDULER: FsrsScheduler = {
 	type: "fsrs",
 	config: {
@@ -46,7 +46,7 @@ const DEFAULT_SCHEDULER: FsrsScheduler = {
 	}
 } satisfies FsrsScheduler;
 
-export type SettingsChanged = (settings: PluginSettings, isExternal: boolean) => void;
+export type SettingsChanged = (settings: PluginSettings, isExternal: boolean) => Promise<void> | void;
 
 export type SettingsChangedInfo = "schedulerConfig";// | typeof UNARY_UNION_DEFAULT;
 
@@ -63,9 +63,9 @@ export class SettingsManager {
 		hideCardSectionMarker: false,
 		hideDeclarationInReadingView: false,
 		removedItemsPurgeThreshold: 24 * 60 * 60,
-		defaultScheduler: SCHEDULER_ID_DEFUALT,
+		defaultScheduler: SCHEDULER_ID_DEFAULT,
 		schedulers: {
-			[SCHEDULER_ID_DEFUALT]: DEFAULT_SCHEDULER
+			[SCHEDULER_ID_DEFAULT]: DEFAULT_SCHEDULER
 		}
 	};
 
@@ -77,7 +77,7 @@ export class SettingsManager {
 		this.save = async (changedInfo?: SettingsChangedInfo) => {
 			await save(this.settings);
 			onSaved(changedInfo);
-			this.notifyOnChangedListeners(false);
+			await this.notifyOnChangedListeners(false);
 		};
 	}
 
@@ -89,12 +89,12 @@ export class SettingsManager {
 		* @param settings
 		* @returns `true` if {@link settings} is not equal to the current settings.
 		*/
-	public onSettingsChangedExternally(settings: PluginSettings, changed?: (settings: PluginSettings) => void) {
+	public async onSettingsChangedExternally(settings: PluginSettings, changed?: (settings: PluginSettings) => void) {
 		const isNotEqual = !deepEqual(settings, this.settings);
 		if (isNotEqual) {
 			this.settings = settings;
 			changed?.(this.settings);
-			this.notifyOnChangedListeners(true);
+			await this.notifyOnChangedListeners(true);
 		}
 		return isNotEqual;
 	}
@@ -108,14 +108,20 @@ export class SettingsManager {
 		this.registeredChangedCallbacks = this.registeredChangedCallbacks.filter(callback => callback !== evt);
 	}
 
-	private notifyOnChangedListeners(isExternal: boolean) {
-		this.registeredChangedCallbacks.forEach(cb => cb(this.settings, isExternal));
+	private async notifyOnChangedListeners(isExternal: boolean) {
+		for (const cb of this.registeredChangedCallbacks) {
+			try {
+				await cb(this.settings, isExternal);
+			} catch (e) {
+				Env.log.e("Error executing settings changed callback:", e);
+			}
+		}
 	}
 
 	private registeredChangedCallbacks: SettingsChanged[] = [];
 
 	public get defaultScheduler(): SchedulerSetting {
-		const scheduler = this.settings.schedulers[isString(this.settings.defaultScheduler) ? this.settings.defaultScheduler : SCHEDULER_ID_DEFUALT];
+		const scheduler = this.settings.schedulers[isString(this.settings.defaultScheduler) ? this.settings.defaultScheduler : SCHEDULER_ID_DEFAULT];
 		Env.assert(scheduler !== undefined, "Corrupt settings.");
 		return scheduler !== undefined ? scheduler : DEFAULT_SCHEDULER;
 	}

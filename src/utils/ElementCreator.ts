@@ -1,5 +1,9 @@
-import { TableSectionCreator } from "utils/dom/table";
-import { CreateElParam, createElWrapper, createWrappedEl } from "utils/obs/dom";
+import { Doc } from "#/utils/dom/dom";
+import { TableSectionCreator } from "#/utils/dom/table";
+import { Api } from "#/utils/obs/api";
+import { CreateElParam, createElWrapper, createWrappedEl } from "#/utils/obs/dom";
+import { Str } from "#/utils/ts";
+import { App, Component, TFile } from "obsidian";
 
 export type ElementCreatorOptions<K extends keyof HTMLElementTagNameMap> = Omit<CreateElParam<K>, "tag" | "parent"> & {
 	parent?: HTMLElement
@@ -10,20 +14,48 @@ export type ElementCreatorOptions<K extends keyof HTMLElementTagNameMap> = Omit<
  */
 export class ElementCreator {
 	private readonly defaultParent: HTMLDivElement;
+	private get defaultDocument() { return Doc.from(this.defaultParent); }
 
 	constructor(defaultParent: HTMLDivElement) {
 		this.defaultParent = defaultParent;
 	}
 
-	public appendChild<T extends HTMLElement>(el: T): T {
-		return this.defaultParent.appendChild(el);
+	public readonly node = {
+		fragment: () => this.defaultDocument.createDocumentFragment(),
+		text: (text: string) => this.defaultDocument.createTextNode(text),
+		appendText: (text: string) => this.defaultParent.appendText(text),
+		appendChild: <T extends HTMLElement | DocumentFragment>(el: T) => this.defaultParent.appendChild(el),
+	};
+
+	public p(o?: string | ElementCreatorOptions<"p">) {
+		return this.elem("p", Str.is(o) ? { o: { text: o } } : o);
 	}
 
-	public para(o?: DomElementInfo | string, parent?: HTMLElement) {
-		return createWrappedEl({
-			parent: parent ?? this.defaultParent,
-			tag: "p",
-			o: o,
+	public div(o?: ElementCreatorOptions<"div">, cb?: (el: HTMLElementTagNameMap["div"]) => void) {
+		return this.elem("div", { ...o, createdCallback: cb });
+	}
+
+	public btn(o?: ElementCreatorOptions<"button">, cb?: (el: HTMLElementTagNameMap["button"]) => void) {
+		return this.elem("button", { ...o, createdCallback: cb });
+	}
+
+	public h<N extends 1 | 2 | 3 | 4 | 5 | 6>(tag: N, o: string | ElementCreatorOptions<`h${N}`>) {
+		return this.elem(`h${tag}`, Str.is(o) ? { o: { text: o } } : o);
+	}
+
+	public fileLink(file: TFile, component: Component, app: App) {
+		return this.defaultParent.createEl("a", {
+			text: file.basename,
+			href: "#",
+			cls: "internal-link",
+		}, (link) => {
+			const handler = async (event: PointerEvent) => {
+				event.preventDefault();
+				const href = (event.currentTarget as HTMLAnchorElement).getAttribute('href');
+				if (href)
+					await app.workspace.openLinkText(href, file.path, Api.Event.paneType(event));
+			};
+			component.registerDomEvent(link, "click", handler);
 		});
 	}
 
@@ -32,7 +64,7 @@ export class ElementCreator {
 	}
 
 	public table(builder?: (section: TableSectionCreator) => void, options?: ElementCreatorOptions<"table">) {
-		const table = createWrappedEl(this.toCreateParam("table", options));
+		const table = this.elem("table", options);
 		if (builder !== undefined)
 			builder(new TableSectionCreator(table));
 		return table;
@@ -43,15 +75,18 @@ export class ElementCreator {
 		o?: DomElementInfo | string,
 		createdCallback?: (el: HTMLElementTagNameMap[K]) => void,
 		parent?: HTMLElement): HTMLElementTagNameMap[K] {
-		return createWrappedEl({
-			tag: tag,
-			parent: parent ?? this.defaultParent,
+		return this.elem(tag, {
+			parent: parent,
 			o: o,
 			createdCallback: createdCallback,
 		});
 	}
 
-	/** Converts {@link ElementCreatorOptions} to {@link CreateElParam}. */
+	public elem<K extends keyof HTMLElementTagNameMap>(tag: K, o?: ElementCreatorOptions<K>) {
+		return createWrappedEl(this.toCreateParam(tag, o));
+	}
+
+	/** Converts {@link ElementCreatorOptions} to {@link CreateElParam} using {@link defaultParent} as the parent if not specified. */
 	private toCreateParam<K extends keyof HTMLElementTagNameMap>(
 		tag: K,
 		info?: ElementCreatorOptions<K>

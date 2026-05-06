@@ -1,8 +1,7 @@
-import { ContentParser } from "#/ContentParser";
-import { DataStore, DeckIDDataTuple } from "#/data/DataStore";
-import { DeckID } from "#/data/FullID";
+import { CssClass } from "#/constants";
+import { DataStore } from "#/data/DataStore";
 import { Env } from "#/env";
-import t from "#/Localization";
+import { t } from "#/Localization";
 import { ReviewItemInfoModal } from "#/modals/ReviewItemInfoModal";
 import { HeadingProcessor } from "#/renderings/content/HeadingProcessor";
 import { ReviewItemInfo } from "#/scheduling/ReviewItemInfo";
@@ -13,14 +12,17 @@ import { OmitIndexSignature, UnsignedInteger } from "#/types";
 import { Icon } from "#/ui/constants";
 import { UIAssistant } from "#/ui/UIAssistant";
 import { UnexpectedUndefinedError } from "#/utils/errors";
+import { Api } from "#/utils/obs/api";
+import { El } from "#/utils/obs/dom";
 import { FileParserError } from "#/utils/obs/FileParser";
 import { InternalApi } from "#/utils/obs/internal";
-import { Bln, Num, Obj, Str } from "#/utils/ts";
+import { Arr, Bln, Num, Obj, Str, Union } from "#/utils/ts";
 import { BaseView, BaseViewEphemeralState, BaseViewState } from "#/views/BaseView";
 import { ContentUnit } from "#/views/review/ContentUnit";
 import { createMetadataEl, createRatingButtons } from "#/views/review/elements";
+import { ItemReviewProviderError, ReviewItemProvider, ReviewProviderConfig, ReviewProviderError, ReviewProviderErrors, ReviewProviderFactory } from "#/views/review/providers";
 import { ReviewState } from "#/views/review/types";
-import { IconName, Keymap, KeymapEventListener, Menu, PaneType, Scope, setIcon, setTooltip, TFile, ViewStateResult, WorkspaceLeaf } from "obsidian";
+import { IconName, Keymap, KeymapEventListener, Menu, PaneType, setIcon, setTooltip, TFile, ViewStateResult, WorkspaceLeaf } from "obsidian";
 
 declare global {
 	interface DOMStringMap {
@@ -29,7 +31,7 @@ declare global {
 }
 
 interface ReviewViewState extends BaseViewState {
-	deckID: DeckID | null;
+	providerConfig: ReviewProviderConfig | null;
 	showMetadata: boolean;
 	sortOrder: ReviewSortOrder;
 }
@@ -40,13 +42,13 @@ interface ReviewViewEphemeralState extends BaseViewEphemeralState {
 	backScrollPosition: number;
 };
 
-const DEFAULT_STATE: ReviewViewState = {
-	deckID: null,
+const DEFAULT_STATE: OmitIndexSignature<ReviewViewState> = {
+	providerConfig: null,
 	showMetadata: false,
 	sortOrder: "due",
 } as const;
 
-const DEFAULT_ESTATE: ReviewViewEphemeralState = {
+const DEFAULT_ESTATE: OmitIndexSignature<ReviewViewEphemeralState> = {
 	contentIndex: null,
 	frontScrollPosition: 0,
 	backScrollPosition: 0
@@ -55,14 +57,12 @@ const DEFAULT_ESTATE: ReviewViewEphemeralState = {
 export class ReviewView extends BaseView<ReviewViewState> {
 
 	public static readonly TYPE = "come-through-view-review";
-	public static createViewState(deckID: DeckID | null): ReviewViewState {
-		Env.log.d("ReviewView:createViewState: collection ID:", deckID);
+	public static createViewState(config: ReviewProviderConfig | null): ReviewViewState {
+		Env.log.d("ReviewView:createViewState: config:", config);
 		return BaseView.withDefaultViewState({
 			...DEFAULT_STATE,
-			...{
-				deckID: deckID,
-			},
-		} satisfies ReviewViewState);
+			providerConfig: config,
+		} satisfies OmitIndexSignature<ReviewViewState>);
 	}
 
 	private readonly data: DataStore;
@@ -84,7 +84,7 @@ export class ReviewView extends BaseView<ReviewViewState> {
 		*/
 	private reviewState: ReviewState | null = null;
 
-	private deck: DeckIDDataTuple | null = null;
+	private provider: ReviewItemProvider | undefined;
 
 	private ratingButtonsContainer?: HTMLDivElement;
 	private displayNextContentButton?: HTMLElement;
@@ -96,44 +96,52 @@ export class ReviewView extends BaseView<ReviewViewState> {
 		ui: UIAssistant,
 		data: DataStore) {
 		Env.log.d("ReviewView:constructor");
-		super(leaf, settingsManager, { data: data });
+		super(leaf, settingsManager, {
+			data: data,
+			paneMenu: {
+				addReloadItem: () => {
+					this.removeAllPages(true); // Currently first page is loaded if the pager has no `currentIndex`.
+				},
+			},
+			scope: {
+				register: (app, scope) => {
+					const onDisplayNextContentItem: KeymapEventListener = () => {
+						this.displayNextContentItem();
+						return false;
+					};
+
+					const rate = (rating: Rating) => {
+						const f = this.getFacade();
+						if (f !== null && f.rate !== null)
+							f.rate(rating).catch(Env.catch);
+					};
+
+					scope.register(null, " ", onDisplayNextContentItem);
+					scope.register(null, "Enter", onDisplayNextContentItem);
+					if (!InternalApi.addEventHandlerToExistingKeyMap(app, scope, "markdown:toggle-preview", onDisplayNextContentItem))
+						scope.register(["Mod"], "E", onDisplayNextContentItem);
+
+					scope.register(null, "1", () => rate(Rating.Again));
+					scope.register(null, "2", () => rate(Rating.Hard));
+					scope.register(null, "3", () => rate(Rating.Good));
+					scope.register(null, "4", () => rate(Rating.Easy));
+				},
+			},
+		});
 
 		this.scheduler = scheduler;
 		this.ui = ui;
 		this.data = data;
 
 		this.pager = new ContentUnit(2);
-
-		this.navigation = true;
-		this.scope = new Scope(this.app.scope);
-
-		const onDisplayNextContentItem: KeymapEventListener = () => {
-			this.displayNextContentItem();
-			return false;
-		};
-
-		const rate = (rating: Rating) => {
-			this.getFacade()?.rate?.(rating);
-		};
-
-		this.scope.register(null, " ", onDisplayNextContentItem);
-		this.scope.register(null, "Enter", onDisplayNextContentItem);
-		if (!InternalApi.addEventHandlerToExistingKeyMap(this.app, this.scope, "markdown:toggle-preview", onDisplayNextContentItem))
-			this.scope.register(["Mod"], "E", onDisplayNextContentItem);
-
-		this.scope.register(null, "1", () => rate(Rating.Again));
-		this.scope.register(null, "2", () => rate(Rating.Hard));
-		this.scope.register(null, "3", () => rate(Rating.Good));
-		this.scope.register(null, "4", () => rate(Rating.Easy));
-
-		this.scope.register(["Mod"], "R", () => this.reloadView());
 	}
 
-	public setSortOrder(sortOrder: ReviewSortOrder) {
+	/** @async Await if to operate after the view has been rendered. */
+	public async setSortOrder(sortOrder: ReviewSortOrder) {
 		this.state.sortOrder = sortOrder;
 		this.removeAllPages(true);
 		this.saveState();
-		this.render();
+		await this.render();
 	}
 
 	/**
@@ -146,8 +154,11 @@ export class ReviewView extends BaseView<ReviewViewState> {
 
 		return {
 
-			/** @returns `null` if source file cannot be opened. */
-			openSourceFile: this.sourceFile() instanceof TFile ? async (newLeaf?: PaneType | boolean) => {
+			/**
+			 * @async Await if to operate after the file has been opened.
+			 * @returns `null` if source file cannot be opened.
+			 */
+			openSourceFile: Api.File.is(this.sourceFile()) ? async (newLeaf?: PaneType | boolean) => {
 				const sourceFile = this.sourceFile();
 				if (sourceFile) {
 					const leaf = this.app.workspace.getLeaf(newLeaf);
@@ -155,7 +166,8 @@ export class ReviewView extends BaseView<ReviewViewState> {
 				}
 			} : null,
 
-			rate: this.pager.isAtLastIndex ? (rating: Rating) => this.rate(rating) : null,
+			/** @async Await if you need the updated data. */
+			rate: this.pager.isAtLastIndex ? async (rating: Rating) => await this.rate(rating) : null,
 
 			reviewState: reviewState,
 			reviewItemInfo: () => this.scheduler.getItemInfo(reviewState.reviewedItem),
@@ -166,13 +178,13 @@ export class ReviewView extends BaseView<ReviewViewState> {
 			toggleShowMetadata: this.pager.currentIndex !== null ? () => {
 				this.state.showMetadata = !this.state.showMetadata;
 				this.saveState();
-				this.render();
+				this.render().catch(Env.catch);
 			} : null,
 		};
 	}
 
 	public override getIcon(): IconName {
-		return Icon.PLUGIN;
+		return Icon.View.REVIEW;
 	}
 
 	public override getViewType(): string {
@@ -180,18 +192,17 @@ export class ReviewView extends BaseView<ReviewViewState> {
 	}
 
 	public override getDisplayText(): string {
-		return this.deck ? `Review: ${this.deck.data.n}` : "Review";
+		return this.provider !== undefined ? this.provider.getDisplayText() : "Review";
 	}
 
-	public override onPaneMenu(menu: Menu, source: 'more-options' | 'tab-header' | string): void {
-		Env.log.d("ReviewView:onPaneMenu");
+	public override onPaneMenu(menu: Menu, source: "more-options" | "tab-header" | (string & {})): void {
 		super.onPaneMenu(menu, source);
 
 		if (source === "tab-header")
 			return;
 
 		const prefix = false;
-		const section = "pane";
+		const section = Api.Menu.Section.Pane;
 		const action = this.getFacade();
 
 		this.ui.addMenuItem(menu, `Order by retrievability`, {
@@ -199,9 +210,7 @@ export class ReviewView extends BaseView<ReviewViewState> {
 			icon: "arrow-up-down",
 			prefix: prefix,
 			checked: this.state.sortOrder === "retrievability",
-			onClick: () => {
-				this.setSortOrder(this.state.sortOrder === "retrievability" ? "due" : "retrievability");
-			}
+			onClick: () => void this.setSortOrder(this.state.sortOrder === "retrievability" ? "due" : "retrievability").catch(Env.catch),
 		});
 
 		if (action !== null && action.openSourceFile !== null) {
@@ -209,9 +218,7 @@ export class ReviewView extends BaseView<ReviewViewState> {
 				section: section,
 				icon: "file-code-2",
 				prefix: prefix,
-				onClick: async evt => {
-					await action.openSourceFile?.(Keymap.isModEvent(evt));
-				}
+				onClick: evt => void action.openSourceFile?.(Keymap.isModEvent(evt)).catch(Env.catch)
 			});
 		}
 
@@ -224,15 +231,6 @@ export class ReviewView extends BaseView<ReviewViewState> {
 				onClick: action.toggleShowMetadata
 			});
 		}
-
-		this.ui.addMenuItem(menu, "Reload", {
-			section: section,
-			icon: "refresh-cw",
-			prefix: prefix,
-			onClick: () => {
-				this.reloadView();
-			}
-		});
 	}
 
 	protected override async onOpen(): Promise<void> {
@@ -249,29 +247,25 @@ export class ReviewView extends BaseView<ReviewViewState> {
 	protected override onSetState(state: ReviewViewState, _result: ViewStateResult): void {
 		Env.log.d("ReviewView:onSetState", state);
 
-		const setState = () => {
-			this.state = { ...DEFAULT_STATE, ...state };
-			this.deck = state.deckID ? {
-				id: state.deckID,
-				data: this.data.getDeck(state.deckID, true)!
-			} : null;
+		const applyState = (overrides: Partial<ReviewViewState> = {}) => {
+			this.state = { ...DEFAULT_STATE, ...state, ...overrides };
+			this.provider = ReviewProviderFactory.create(this.state.providerConfig, {
+				app: this.app,
+				data: this.data,
+				scheduler: this.scheduler,
+				settings: this.settingsManager.settings
+			});
 		};
 
-		if (Bln.isTrue(state.forceUpdate)) {
-
-			// Makes sense to retain these "settings" when the same leaf is reused.
-			const retainedStateProps = DEFAULT_STATE;
-			retainedStateProps.sortOrder = this.state.sortOrder;
-			retainedStateProps.showMetadata = this.state.showMetadata;
-
-			setState();
-
-			this.state.sortOrder = retainedStateProps.sortOrder;
-			this.state.showMetadata = retainedStateProps.showMetadata;
-
+		if (state.reason === "init") {
+			applyState({
+				// Makes sense to retain these "settings" when the same leaf is reused, i.e., when user chooses to review something else in the same tab.
+				sortOrder: this.state.sortOrder,
+				showMetadata: this.state.showMetadata
+			});
 			this.removeAllPages(true);
 		} else {
-			setState();
+			applyState();
 		}
 	}
 
@@ -279,10 +273,8 @@ export class ReviewView extends BaseView<ReviewViewState> {
 		Env.log.d("ReviewView:onGetState");
 		return {
 			...this.state,
-			...{
-				deckID: this.deck?.id ?? null,
-			} satisfies Partial<OmitIndexSignature<ReviewViewState>>,
-		};
+			providerConfig: this.provider !== undefined ? this.provider.getConfig() : null,
+		} satisfies OmitIndexSignature<ReviewViewState>;
 	}
 
 	protected override onSetEphemeralState(state: unknown): void {
@@ -306,7 +298,7 @@ export class ReviewView extends BaseView<ReviewViewState> {
 	}
 
 	protected override async onRender(): Promise<void> {
-		Env.log.d("ReviewView:onRender");
+		Env.log.d("ReviewView:onRender", this.state);
 		this.ratingButtonsContainer?.remove();
 		this.ratingButtonsContainer?.empty();
 		this.ratingButtonsContainer = undefined;
@@ -377,18 +369,12 @@ export class ReviewView extends BaseView<ReviewViewState> {
 		this.refreshUI();
 	}
 
-	/** Currently assumes that {@link getNextItem} returns the same item again. */
-	private reloadView() {
-		// Currently first page is loaded if the pager has no `currentIndex`.
-		this.removeAllPages(true);
-		this.render();
-	}
+	private async getNextItem(): Promise<ReviewState | null> {
+		Env.log.view("ReviewView:getNextItem", "provider", this.provider);
+		if (this.provider === undefined)
+			return null;
 
-	/** Tries to set {@link reviewedItem} and {@link currentCard}. */
-	private async getNextItem() {
-		Env.log.d("ReviewView:getNextItem");
-
-		const nextItemOptions = (relativeDate: Date): NextReviewItemOptions => {
+		const calculateDueBefore = (relativeDate: Date): Map<Date, number> => {
 			const totalDueBefore = new Map<Date, number>();
 
 			const noon = new Date(relativeDate);
@@ -406,87 +392,111 @@ export class ReviewView extends BaseView<ReviewViewState> {
 			fourAMNextDay.setHours(4, 0, 0, 0);
 			totalDueBefore.set(fourAMNextDay, 0);
 
-			return {
-				sortOrder: this.state.sortOrder,
-				totalDueBefore: this.state.sortOrder === "due" ? totalDueBefore : undefined,
-				totalRetrievabilityBelow: this.state.sortOrder === "retrievability" ? new Map<number, number>([[0.85, 0], [0.90, 0], [0.95, 0]]) : undefined,
-			};
-		};
-
-		const getReviewState = async (): Promise<ReviewState | null> => {
-			const cards = this.data.getAllCardsForDeck(this.deck?.id);
-
-			if (cards.length === 0) {
-				Env.log.view("ReviewView:getNextItem: cards.length === 0");
-				this.dom.create.para({
-					text: `There are no cards in ${this.deck ? `the deck named ${this.deck.data.n}` : "this vault"}.`
-				});
-				return null;
-			}
-
-			const now = new Date();
-			const options = nextItemOptions(now);
-			const reviewedItem = this.scheduler.getNextItem(cards, now, options);
-
-			if (!reviewedItem) {
-				this.dom.create.para({ text: `No more cards at the moment. All ${cards.length} cards ${this.deck ? `under ${this.deck.data.n}` : "in this vault"} are done.` });
-				return null;
-			}
-
-			Env.assert(Str.nonEmpty(reviewedItem.id.cardID) !== undefined, "Card expected");
-			if (Str.nonEmpty(reviewedItem.id.cardID) === undefined)
-				return null;
-
-			const contentResult = await ContentParser.getCard(reviewedItem.id, this.app, {
-				contentRead: {
-					hideCardSectionMarker: this.settingsManager.settings.hideCardSectionMarker
-				},
-				likelyNoteIDs: this.data.getAllNotes() // Only notes that contain declarations
-			});
-
-			if (contentResult.complete === null) {
-				if (contentResult.incomplete !== null)
-					this.dom.create.para({ text: `"${reviewedItem.id.toString()}" does not have a ${contentResult.incomplete.backMarkdown ? "back" : "front"} side.` });
-				else
-					this.dom.create.para({ text: `Could not find content of "${reviewedItem.id.cardID}" in "${reviewedItem.id.noteID}".` });
-
-				return null;
-			}
-
-			return {
-				reviewedItem,
-				date: now,
-				card: contentResult.complete,
-				numberOfItems: cards.length,
-				totalDueBefore: options.totalDueBefore,
-				totalRetrievabilityBelow: options.totalRetrievabilityBelow
-			};
+			return totalDueBefore;
 		};
 
 		const handleError = (error: unknown) => {
 			Env.log.e("ReviewView:getNextItem:handleError:", error);
 
-			// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+			// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- As of now there's just one `error.type`.
 			if (error instanceof FileParserError && error.type === "file cache unavailable") {
-
-				this.dom.create.para({ text: `Cannot display card because "${error.file.path}" is not indexed.` });
-				this.dom.create.paraWrapper().createEl("button", { text: "Reload Obsidian" }, (el) => {
-					this.registerDomEvent(el, "click", () => { InternalApi.reloadApp(this.app); })
+				this.dom.create.p(`Cannot display card because "${error.file.path}" is not indexed.`);
+				this.dom.create.div({ wrapperClasses: ["flex justify-center"] , o: { cls: ["flex gap-4"]} }, (el) => {
+					El.create(el, "button", { text: "Reload views" }, (el) => {
+						this.registerDomEvent(el, "click", (evt) => this.reload(evt))
+					});
+					El.create(el, "button", { text: "Reload Obsidian" }, (el) => {
+						this.registerDomEvent(el, "click", () => InternalApi.reloadApp(this.app))
+					});
 				});
 			}
 			else if (error instanceof Error) {
-				this.dom.create.para({ text: error.message });
+				this.dom.create.p(error.message);
 			}
 			else {
-				this.dom.create.para({ text: "Could not retrieve content" });
+				this.dom.create.p("Could not retrieve content");
 			}
 		}
 
+		const handleProviderError = (error: ReviewProviderError) => {
+			const specificError = ReviewProviderError.cast(error);
+
+			Union.match(error.info, "code", {
+				"no-data-items": (_info) => {
+					if (specificError.type === "item") {
+						this.dom.create.p(`The requested ${specificError.items.size} review units do not exist`)
+					}
+					else {
+						const suffix = Union.match<Exclude<ReviewProviderErrors, ItemReviewProviderError>, "type", string>(specificError, "type", {
+							"all": (_e) => "this vault.",
+							"deck": (e) => {
+								return `the ${Obj.numKeys(e.items) === 1 ? "deck" : "decks"} named ${Object.values(e.items).map(d => d.n).join(", ")}.`;
+							},
+							"file": (e) => `${e.items.length === 1 ? "this file" : `these ${e.items.length} files`}.`,
+						});
+						this.dom.create.p(`There is no review content defined in ${suffix}`);
+					}
+				},
+				"no-review-items": (info) => {
+					const suffix = Union.match<ReviewProviderErrors, "type", string | DocumentFragment>(specificError, "type", {
+						"all": (_e) => `in this vault are done.`,
+						"item": (_e) => `are done.`,
+						"deck": (e) => `under ${Object.values(e.items).map(d => d.n).join(", ")} are done.`,
+						"file": (e) => {
+
+							if (e.items.length === 1) {
+								const file = Api.File.get(this.app.vault, Arr.firstOrThrow(e.items));
+								if (file !== null) {
+									const fragment = this.dom.create.node.fragment();
+									fragment.appendChild(this.dom.create.node.text('in '));
+									fragment.appendChild(this.dom.create.fileLink(file, this, this.app));
+									fragment.appendChild(this.dom.create.node.text(' are done.'));
+									return fragment;
+								}
+							}
+
+							return `in "${e.items.length === 1 ? e.items[0] : String(e.items.length)}${e.items.length > 1 ? " files" : ""}" are done.`
+						}
+					});
+
+					this.dom.create.p({
+						o: {
+							text: `No more cards at the moment. All ${String(info.cards.length)} cards `,
+						},
+						createdCallback: (p) => {
+							if (Str.is(suffix))
+								p.appendText(suffix);
+							else
+								p.appendChild(suffix);
+						}
+					});
+				},
+				"incomplete-declaration": (info) => {
+					this.dom.create.p(`Could not find content of "${info.reviewedItem.id.cardID}" in "${info.reviewedItem.id.noteID}".`);
+				},
+				"content-not-found": (info) => {
+					this.dom.create.p(`"${info.reviewedItem.id.toString()}" does not have a ${info.incomplete.backMarkdown === undefined ? "back" : "front"} side.`);
+				},
+				"unexpected": (info) =>
+					this.dom.create.p(info.message),
+			});
+		};
+
 		let rs: ReviewState | null = null;
+		const now = new Date();
+		const options: NextReviewItemOptions = {
+			sortOrder: this.state.sortOrder,
+			totalDueBefore: this.state.sortOrder === "due" ? calculateDueBefore(now) : undefined,
+			totalRetrievabilityBelow: this.state.sortOrder === "retrievability" ? new Map<number, number>([[0.85, 0], [0.90, 0], [0.95, 0]]) : undefined,
+		};
 
 		try {
-			rs = await getReviewState();
-		} catch (error: unknown) {
+			const result = await this.provider.getNextItem(now, options);
+			if (result instanceof ReviewProviderError)
+				handleProviderError(result);
+			else
+				rs = result;
+		} catch (error) {
 			handleError(error);
 		}
 
@@ -507,11 +517,14 @@ export class ReviewView extends BaseView<ReviewViewState> {
 		this.scheduler.rateItem(item.id, rating);
 		await this.data.save(); // This will trigger a refresh via the registered change callback.
 
-		this.ui.displayNotice(`You rated ${ReviewItemInfo.Convert.ratingAsString(rating)}`, { prefix: false });
+		this.ui.notify.info(`You rated ${ReviewItemInfo.Convert.ratingAsString(rating)}`, { prefix: false });
 	}
 
 	private displayNextContentItem() {
-		Env.log.d("ReviewView:displayNextContentItem");
+		Env.log.d("ReviewView:displayNextContentItem", this.reviewState);
+		if (this.reviewState === null)
+			return;
+
 		const nextIndex = this.pager.nextIndexUp;
 		Env.dev?.assert(nextIndex !== null);
 		if (nextIndex !== null)
@@ -690,7 +703,7 @@ export class ReviewView extends BaseView<ReviewViewState> {
 		if (borderRadius >= minDimension / 2) // Radius is to large relative to the buttons dimensions. For example, a true circle results from a square button (equal width and height) with a radius of half that size.
 			maxWidth = borderRadius * 2 + (minContentWidth === Infinity ? 2 : minContentWidth) * 0.5; //"borderRadius * 2" is the width that makes it a circle, then whatever is added will make up the horizontal border.
 
-		ratingButtons.forEach(btn => btn.setCssProps({ "width": maxWidth + "px" }));
+		ratingButtons.forEach(btn => btn.setCssProps({ [CssClass.View.Review.Var.RATING_BUTTON_WIDTH]: maxWidth + "px" }));
 
 		this.ratingButtonsContainer.dataset.didAdjustButtons = "true";
 	}

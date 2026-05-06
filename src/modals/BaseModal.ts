@@ -35,6 +35,22 @@ export class BaseModal extends Modal {
 		this.contentEl.addClass(CssClass.Modal.CONTENT);
 	}
 
+	public override onOpen(): Promise<void> | void {
+		const result = super.onOpen();
+		if (this.focusEl !== undefined)
+			this.focusEl.focus();
+		return result;
+	}
+
+	public override onClose(): void {
+		super.onClose();
+	}
+
+	protected setFocusEl(el: HTMLElement) {
+		this.focusEl = el;
+	}
+	private focusEl?: HTMLElement;
+
 	protected createSetting(name: string, o?: { styleControlElAsDesc?: boolean, isHeading?: boolean }) {
 		const s = new Setting(this.contentEl).setName(name)
 		if (o?.styleControlElAsDesc)

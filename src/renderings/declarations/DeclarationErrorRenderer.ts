@@ -25,17 +25,17 @@ export class DeclarationErrorRenderer
 		}
 	}
 
-	public static invalidCardDeclaration(r: DeclarationRenderAssistant, _errorMessage?: string) {
+	public static invalidCardDeclaration(this: void, r: DeclarationRenderAssistant, _errorMessage?: string) {
 		r.setTitle("Invalid card declaration");
 		r.addParagraph("Please check entered keys and values.");
 	}
 
-	public static invalidCommandDeclaration(r: DeclarationRenderAssistant, _errorMessage?: string) {
+	public static invalidCommandDeclaration(this: void, r: DeclarationRenderAssistant, _errorMessage?: string) {
 		r.setTitle("Invalid declaration command");
 		r.addParagraph("Please check the entered values.");
 	}
 
-	public static unknownCommandName(r: DeclarationRenderAssistant, errorMessage?: string) {
+	public static unknownCommandName(this: void, r: DeclarationRenderAssistant, errorMessage?: string) {
 		r.setTitle("Unknown declaration command");
 		if (errorMessage)
 			r.addParagraph(errorMessage);

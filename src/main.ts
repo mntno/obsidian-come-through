@@ -1,24 +1,20 @@
-import { OpenView, OpenViewCommand } from "#/commands/openView";
-import { ReviewViewCommand } from "#/commands/reviewView";
+import { DataProvider } from "#/data/DataProvider";
 import { DataStore, DataStoreRoot } from "#/data/DataStore";
 import { SyncManager } from "#/data/SyncManager";
 import { DeclarationManager } from "#/declarations/DeclarationManager";
-import { DeclarationParser } from "#/declarations/DeclarationParser";
 import { Env } from "#/env";
-import t from "#/Localization";
 import { ConfirmationModal } from "#/modals/ConfirmationModal";
 import { Scheduler } from "#/scheduling/Scheduler";
 import { FsrsSchedulerConfig } from "#/scheduling/types";
 import { PluginSettings, SettingsChangedInfo, SettingsManager } from "#/Settings";
-import { Icon } from "#/ui/constants";
+import { Prettify } from "#/types";
 import { SettingTab } from "#/ui/SettingTab";
 import { UIAssistant } from "#/ui/UIAssistant";
 import { DomState } from "#/utils/obs/DomState";
 import { DecksView } from "#/views/DecksView";
 import { DefinedContentView } from "#/views/DefinedContentView";
 import { ReviewView } from "#/views/review/ReviewView";
-import { EditorCommand } from "commands/editor";
-import { Keymap, MarkdownPostProcessorContext, Plugin, TFile } from "obsidian";
+import { MarkdownPostProcessorContext, Plugin } from "obsidian";
 
 interface PluginData {
 	settings: PluginSettings;
@@ -47,7 +43,7 @@ export default class ComeThroughPlugin extends Plugin {
 			},
 			this.onSettingsSaved
 		);
-		DomState.init(this, document);
+		DomState.init(this, activeDocument);
 
 		this.dataStore = new DataStore(this.latestPluginDataRef.data, this.latestPluginDataRef.settings.removedItemsPurgeThreshold, async (data) => {
 			this.latestPluginDataRef.data = data;
@@ -56,19 +52,21 @@ export default class ComeThroughPlugin extends Plugin {
 
 		this.scheduler = new Scheduler(this.dataStore, this.createSchedulerConfig());
 		this.syncManager = new SyncManager(this.dataStore, this.app, () => this.scheduler.createItem());
-		this.ui = new UIAssistant(this.settingsManager);
+		this.ui = new UIAssistant(this.settingsManager, DataProvider.creator(this.dataStore));
 
 		this.addSettingTab(new SettingTab(this, this.settingsManager));
-		this.addRibbonIcon(Icon.PLUGIN, this.ui.contextulize("Review"), (evt: MouseEvent) => {
-			OpenView.review(this.app, this.dataStore, Keymap.isModEvent(evt));
-		});
+
+		this.registerEvent(this.app.workspace.on("file-open", this.syncManager.open));
+		this.registerEvent(this.app.metadataCache.on("changed", this.syncManager.changed));
+		this.registerEvent(this.app.vault.on("delete", this.syncManager.delete));
+		this.registerEvent(this.app.vault.on("rename", this.syncManager.rename));
 
 		this.app.workspace.onLayoutReady(() => this.registerEvents());
 
 		for (const language of DeclarationManager.supportedCodeBlockLanguages) {
 			this.registerMarkdownCodeBlockProcessor(language, (source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext) => {
 				if (!this.settingsManager.settings.hideDeclarationInReadingView || UIAssistant.isInInLivePreview(this.app))
-					DeclarationManager.processCodeBlock(this.app, source, el, ctx, this.dataStore);
+					DeclarationManager.processCodeBlock(this.app, source, el, ctx, this.dataStore).catch(Env.catch);
 			}, -100); // Process this code block last, allowing other plugins to alter user input first.
 		}
 
@@ -89,23 +87,11 @@ export default class ComeThroughPlugin extends Plugin {
 			(leaf) => new DefinedContentView(leaf, this.settingsManager, this.dataStore)
 		);
 
-		// Commands
-
-		this.addCommand(OpenViewCommand.review(this.app, this.dataStore));
-		this.addCommand(OpenViewCommand.collections(this.app));
-		this.addCommand(OpenViewCommand.definedContent(this.app));
-
-		for (const command of ReviewViewCommand.setSortOrder(this.app))
+		for (const command of this.ui.actions.getCommands(this.app))
 			this.addCommand(command);
-		for (const command of ReviewViewCommand.rate(this.app))
-			this.addCommand(command);
-		this.addCommand(ReviewViewCommand.showInfoModal(this.app));
-		this.addCommand(ReviewViewCommand.toggleInlineInfo(this.app));
-		this.addCommand(ReviewViewCommand.navigateToSourceFile(this.app));
 
-		this.addCommand(EditorCommand.generateId());
-		this.addCommand(EditorCommand.insertReviewUnit(false));
-		this.addCommand(EditorCommand.insertReviewUnit(true));
+		for (const ribbonItem of this.ui.actions.getRibbonItems(this.app))
+			this.addRibbonIcon(ribbonItem.icon, ribbonItem.name, ribbonItem.callback);
 	}
 
 	public override onunload() {
@@ -119,7 +105,7 @@ export default class ComeThroughPlugin extends Plugin {
 		Env.log.d("Plugin:onExternalSettingsChange");
 
 		const overwrittenDataOnDisk = await ComeThroughPlugin.loadPluginData(this);
-		this.settingsManager.onSettingsChangedExternally(overwrittenDataOnDisk.settings, (changed) => this.latestPluginDataRef.settings = changed);
+		await this.settingsManager.onSettingsChangedExternally(overwrittenDataOnDisk.settings, (changed) => this.latestPluginDataRef.settings = changed);
 
 		this.syncManager.whileSuspended(() => {
 
@@ -132,18 +118,18 @@ export default class ComeThroughPlugin extends Plugin {
 
 			this.dataStore.onDataChangedExternally(
 				overwrittenDataOnDisk.data,
-				(info, commit: () => void) => {
+				(info, commit: () => Promise<void>) => {
 
 					// Avoid writing to disk again if not needed as this method was already called because of a modification.
 					// The only time it's needed is when the user rejects the change.
-					const accept = () => {
+					const accept = async () => {
 						this.latestPluginDataRef.data = info.changedData; // Update reference first because data change listeners will be called that might call `save`.
-						commit();
+						await commit();
 					};
 
-					const reject = () => {
+					const reject = async () => {
 						this.latestPluginDataRef.data = info.currentData;
-						this.savePluginData(); // Note: calling `save` on `DataStore` will be a no-op because data is not dirty.
+						await this.savePluginData() // Note: calling `save` on `DataStore` will be a "no-op" because data is not dirty.
 					};
 
 					// Only show modal if data explicitly created by the user has changed. Otherwise, automatically accept the changes.
@@ -158,12 +144,12 @@ export default class ComeThroughPlugin extends Plugin {
 						}
 
 						// Note: Several external changes might occur while the modal is showing. User accepting should apply the latest change. Therefore, overwrite events so that the latest variable values are used.
-						this.confirmationModal.onButton1Click = () => accept();
-						this.confirmationModal.onButton2Click = () => reject();
+						this.confirmationModal.onButton1Click = () => void accept().catch(Env.catch);
+						this.confirmationModal.onButton2Click = () => void reject().catch(Env.catch);
 					}
 					else {
 						Env.log.d(`\tAccepting data changes without showing modal.`);
-						accept();
+						accept().catch(Env.catch);
 					}
 				}, () => {
 					Env.log.d(`\tNo data changes detected.`)
@@ -180,29 +166,15 @@ export default class ComeThroughPlugin extends Plugin {
 	 * This includes file events for synchronization and context menu events for user actions.
 	 */
 	private registerEvents() {
-
-		this.registerEvent(this.app.workspace.on("file-open", this.syncManager.open));
-		this.registerEvent(this.app.metadataCache.on("changed", this.syncManager.changed));
-		this.registerEvent(this.app.vault.on("delete", this.syncManager.delete));
-		this.registerEvent(this.app.vault.on("rename", this.syncManager.rename));
-
-		this.registerEvent(this.app.workspace.on("file-menu", (menu, file, source, _leaf) => {
-			if (!(file instanceof TFile))
-				return;
-
-			const isFileIncluded = DeclarationParser.containsDeclarations(file, this.app);
-
-			if (isFileIncluded && (/*source === "file-explorer-context-menu" ||*/ source === "more-options" || source === "tab-header")) {
-				this.ui.addMenuItem(menu, t.actions.viewDeclarationsInFile, {
-					onClick: async (evt) => OpenView.definedContent(this.app, file, Keymap.isModEvent(evt)),
-					section: "open",
-				});
-			}
-		}));
+		this.ui.actions.registerEvents(this.app, this);
 	}
 
 	private static async loadPluginData(plugin: Plugin): Promise<PluginData> {
-		const data = await plugin.loadData(); // Returns `null` if file doesn't exist.
+
+		// `loadData`
+		// - Returns `null` if file doesn't exist.
+		// - returns `any`, cast it to bound the type.
+		const data = await plugin.loadData() as Prettify<Partial<PluginData>> | null;
 
 		// Prepare a temporary settings object by merging top-level properties.
 		const mergedSettings = {

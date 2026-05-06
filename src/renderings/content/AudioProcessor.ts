@@ -1,7 +1,8 @@
+import { Win } from "#/utils/dom/dom";
 import { Env } from "env";
 import { Component } from "obsidian";
-import { HtmlAttribute } from "utils/dom/constants";
 import { parseStrictFloat } from "TypeAssistant";
+import { HtmlAttribute } from "utils/dom/constants";
 import { ContentRendererPostProcessor, ContentRendererProcessor, PostProcessorParameter } from "./ContentRendererProcessor";
 
 type AudioPlayerInfo = {
@@ -211,15 +212,16 @@ export class AudioProcessor extends ContentRendererProcessor implements ContentR
 
 		// First, check for and extract milliseconds if present
 		const msParts = timeString.split(".");
+		let baseTimeString = timeString;
 		if (msParts.length > 1) {
-			timeString = msParts[0] ?? ""; // The part before milliseconds
+			baseTimeString = msParts[0] ?? ""; // The part before milliseconds
 			// Convert milliseconds string to number, handle cases like ".4" or ".40"
 			const msPartValue = msParts[1];
 			milliseconds = msPartValue !== undefined ? Number(`0.${msPartValue}`) : 0;
 		}
 
 		// Split the remaining time string by ':'
-		const parts = timeString.split(":").map(Number);
+		const parts = baseTimeString.split(":").map(Number);
 
 		// Parse parts from right to left (most common for time formats like HH:MM:SS, MM:SS)
 		// index 0: seconds (if only 1 part) or hours (if 3 parts)
@@ -362,7 +364,7 @@ class TimeLoopController extends Component {
 		didReachEnd: false,
 
 		/** The timeout for the {@link AudioPlayerInfo.loopDelay|loop delay}. */
-		loopTimeout: null as NodeJS.Timeout | null,
+		loopTimeoutID: null as number | null,
 	};
 
 	/** Use this instead of assigning `currentTime` directly because {@link state|state variables} need to be set before assignment. */
@@ -392,16 +394,16 @@ class TimeLoopController extends Component {
 	}
 
 	public cancelLoopTimeout() {
-		if (this.state.loopTimeout) {
+		if (this.state.loopTimeoutID !== null) {
 			Env.log.proc(`\tcancelLoopTimeout: cleared timeout`);
-			clearTimeout(this.state.loopTimeout);
-			this.state.loopTimeout = null;
+			Win.Timeout.clear(this.param.el, this.state.loopTimeoutID);
+			this.state.loopTimeoutID = null;
 		}
 	}
 
 	/** Currently paused but will begin playing after {@link AudioPlayerInfo.loopDelay}. */
 	public get isPendingLoop() {
-		return this.state.loopTimeout !== null;
+		return this.state.loopTimeoutID !== null;
 	}
 
 	private onLoadedMetadata(player: HTMLAudioElement) {
@@ -449,10 +451,10 @@ class TimeLoopController extends Component {
 				Env.log.proc(`\t\tSetting playback position to ${this.info.startTime}. Will request playback in ${this.info.loopDelay}s`);
 				this.seekTo(player, this.info.startTime);
 
-				this.state.loopTimeout = setTimeout(() => {
+				this.state.loopTimeoutID = Win.Timeout.set(this.param.el, this.info.loopDelay, () => {
 					this.cancelLoopTimeout();
-					player.play();
-				}, this.info.loopDelay);
+					player.play().catch(Env.catch);
+				});
 			}
 			else {
 				Env.log.proc(`\t\tSetting playback position to ${this.info.startTime} and requesting playback.`);
@@ -491,7 +493,7 @@ class TimeLoopController extends Component {
 			if (this.state.playAfterSeek && player.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
 				this.state.playAfterSeek = false;
 				Env.log.proc(`\t\tStarting playback. readyState is >= ${HTMLMediaElement.HAVE_CURRENT_DATA}`);
-				player.play();
+				player.play().catch(Env.catch);
 			}
 			else {
 				Env.log.proc(`\t\tDid not start playback (playAfterSeek: ${this.state.playAfterSeek}, readyState: ${player.readyState}).`);

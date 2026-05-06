@@ -1,4 +1,4 @@
-import t from "Localization";
+import { t } from "Localization";
 import { Plugin, PluginSettingTab, Setting } from "obsidian";
 import { SettingsChanged, SettingsManager } from "Settings";
 

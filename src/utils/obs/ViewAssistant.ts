@@ -1,8 +1,9 @@
-import { Env } from "#/env";
+import { CssClass as PluginCssClass } from "#/constants";
 import { El } from "#/utils/dom/dom";
 import { UnexpectedUndefinedError } from "#/utils/errors";
-import { CssClass, HtmlAttribute } from "#/utils/obs/constants";
-import { Arr } from "#/utils/ts";
+import { HtmlAttribute, CssClass as ObsCssClass } from "#/utils/obs/constants";
+import { InternalApi, InternalApiError } from "#/utils/obs/internal";
+import { Arr, Bln, Err } from "#/utils/ts";
 import { ItemView } from "obsidian";
 
 /** Knows about the Obsidian specifc DOM structure. */
@@ -18,13 +19,19 @@ export class ViewAssistant {
 		this.deinit();
 
 		this.workspaceLeafContentEl = view.containerEl;
-		El.setAttribute(this.workspaceLeafContentEl, HtmlAttribute.Data.MODE, CssClass.Workspace.Data.PREVIEW_MODE);
+		El.setAttribute(this.workspaceLeafContentEl, HtmlAttribute.Data.MODE, ObsCssClass.Workspace.Data.PREVIEW_MODE);
 
-		this.markdownViewRootEl = view.contentEl.createDiv({ cls: CssClass.MarkdownView.READING }, (readerViewEl) => {
-			this.previewView = readerViewEl.createDiv({ cls: Arr.toMutable(CssClass.MarkdownView.PREVIEW) }, (previewViewEl) => {
-				this.previewSizerEl = previewViewEl.createDiv({ cls: Arr.toMutable(CssClass.MarkdownView.SIZER) }, (el) => {
-					el.createDiv({ cls: Arr.toMutable(CssClass.MarkdownView.PUSHER) });
-					el.createDiv({ cls: Arr.toMutable(CssClass.MarkdownView.MOD) });
+		this.markdownViewRootEl = view.contentEl.createDiv({ cls: ObsCssClass.MarkdownView.READING }, (readerViewEl) => {
+			this.previewView = readerViewEl.createDiv({ cls: Arr.toMutable(ObsCssClass.MarkdownView.Preview.DEFAULT) }, (previewViewEl) => {
+
+				// If failed to get value, add anyway to limit the line witdth in plugin's views.
+				const readableLineLength = InternalApi.getConfig(view.app.vault, "readableLineLength");
+				if (Bln.isTrue(readableLineLength) || Err.is(readableLineLength, InternalApiError))
+					El.Cls.add(previewViewEl, ObsCssClass.MarkdownView.Preview.IS_READABLE_LINE_WIDTH);
+
+				this.previewSizerEl = previewViewEl.createDiv({ cls: Arr.toMutable(ObsCssClass.MarkdownView.SIZER) }, (el) => {
+					el.createDiv({ cls: Arr.toMutable(ObsCssClass.MarkdownView.PUSHER) });
+					el.createDiv({ cls: Arr.toMutable(ObsCssClass.MarkdownView.MOD) });
 				});
 			});
 		});
@@ -91,12 +98,10 @@ export class ViewAssistant {
 		const paddingBottom = Math.floor(containerHeight * 0.5);
 		const minHeight = Math.floor(containerHeight * 0.53);
 
-		this.contentEl.setCssStyles({
-			"paddingBottom": `${paddingBottom}px`,
-			"minHeight": `${minHeight}px`,
+		this.contentEl.setCssProps({
+			[PluginCssClass.View.Var.SCROLL_PADDING]: `${paddingBottom}px`,
+			[PluginCssClass.View.Var.SCROLL_MIN_HEIGHT]: `${minHeight}px`,
 		});
-
-		Env.log.view(`ViewAssistant:adjustAvailableVerticalScrolling: \`padding-bottom\`: "${paddingBottom}px", \`min-height\`: "${minHeight}px"`);
 	}
 
 	private throwIfNotInitialized<T extends HTMLElement | undefined>(el: T): asserts el is Exclude<T, undefined> {
