@@ -15,7 +15,7 @@ export const MarkdownViewCommand = {
 		checkCallback: (checking: boolean) => handleCallbackCheck(
 			app,
 			checking,
-			(file) => createDataProvider().hasStatistics(file),
+			(file) => createDataProvider().stats.exists(file),
 			(file) => OpenView.viewContentInFile(app, file, Api.Event.paneType(app)),
 		)
 	}),
@@ -26,7 +26,7 @@ export const MarkdownViewCommand = {
 		checkCallback: (checking: boolean) => handleCallbackCheck(
 			app,
 			checking,
-			(file) => createDataProvider().hasStatistics(file),
+			(file) => createDataProvider().stats.exists(file),
 			(file) => OpenView.reviewFile(app, file, Api.Event.paneType(app)),
 		)
 	}),

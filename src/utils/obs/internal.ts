@@ -1,4 +1,4 @@
-/* eslint-disable no-undef, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call -- This file encapsulates all use of private Obsidian APIs. Should any type change, only this file needs to be updated. Any structural changes should be handled by the try/catch blocks.  */
+/* eslint-disable no-undef, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call -- This file encapsulates all interaction with private Obsidian APIs. Type changes should only require updates here, while structural changes are handled by the try/catch blocks. */
 import { Env } from "#/env";
 import { Bln } from "#/utils/ts";
 import { App, FuzzySuggestModal, KeymapEventListener, Scope, Vault } from "obsidian";
@@ -11,6 +11,14 @@ export class InternalApiError extends Error {
 }
 
 type ErrorCallback = (e: InternalApiError) => void;
+
+/**
+ * https://obsidian-typings.github.io/obsidian-typings/public/api/obsidian/internals/MobileNavbar/
+ */
+type MobileNavbar = {
+	hideNavigation: () => void;
+	restoreNavigation: () => void;
+};
 
 export const InternalApi = {
 
@@ -65,10 +73,11 @@ export const InternalApi = {
 
 	hideNav: (app: App, hide: boolean) => {
 		try {
+			const navbar = (app as unknown as { mobileNavbar: MobileNavbar | null }).mobileNavbar;
 			if (hide)
-				(app as any).mobileNavbar?.hideNavigation(); // eslint-disable-line @typescript-eslint/no-explicit-any
+				navbar?.hideNavigation();
 			else
-				(app as any).mobileNavbar?.restoreNavigation(); // eslint-disable-line @typescript-eslint/no-explicit-any
+				navbar?.restoreNavigation();
 		}
 		catch (e) {
 			Env.log.e("Failed to hide navigation.", e);
@@ -106,3 +115,4 @@ export const InternalApi = {
 	},
 
 };
+/* eslint-enable no-undef, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call -- Ends the intentionally scoped suppression for private Obsidian API interaction. */

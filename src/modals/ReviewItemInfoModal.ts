@@ -1,11 +1,11 @@
-import { BaseModal } from "modals/BaseModal";
+import { BaseModal } from "#/modals/BaseModal";
+import { ReviewItemInfo } from "#/scheduling/ReviewItemInfo";
+import { ReviewSortOrder } from "#/scheduling/types";
+import { DateTime } from "#/utils/datetime";
+import { TableSectionCreator } from "#/utils/dom/table";
+import { KeyValue, Str } from "#/utils/ts";
+import { ReviewState } from "#/views/review/types";
 import { App } from "obsidian";
-import { ReviewItemInfo } from "scheduling/ReviewItemInfo";
-import { ReviewSortOrder } from "scheduling/types";
-import { DateTime } from "utils/datetime";
-import { TableSectionCreator } from "utils/dom/table";
-import { KeyValue, Str } from "utils/ts";
-import { ReviewState } from "views/review/types";
 
 export class ReviewItemInfoModal extends BaseModal {
 

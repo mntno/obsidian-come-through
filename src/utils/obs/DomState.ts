@@ -1,4 +1,4 @@
-import { El } from "#/utils/dom/dom";
+import { El } from "#/utils/obs/dom";
 import { CssClass } from "#/utils/obs/constants";
 import { Arr, Str } from "#/utils/ts";
 import { Plugin } from "obsidian";

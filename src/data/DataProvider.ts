@@ -1,5 +1,4 @@
-import { DataStore, DeckIDDataTuple } from "#/data/DataStore";
-import { DeckID } from "#/data/FullID";
+import { DataStore } from "#/data/DataStore";
 import { Env } from "#/env";
 import { asNoteID } from "#/TypeAssistant";
 import { Api } from "#/utils/obs/api";
@@ -17,46 +16,38 @@ export class DataProvider {
 		return () => new DataProvider(store);
 	}
 
-	private constructor(store: DataStore) {
+	public constructor(store: DataStore) {
 		this.store = store;
 	}
 
-	public hasStatistics(file: TAbstractFile | TAbstractFile[]): boolean {
-		Env.log.data("DataProvider:hasStatistics", ", file:", file);
+	public get item() { return this.store.item; }
+	public get collection() { return this.store.collection; }
+	public get note() { return this.store.note; }
 
-		const hasStatistics: (file: TFile) => boolean = (file) =>
-			this.store.noteHasItems(asNoteID(file));
+	public readonly stats = {
 
-		if (Api.File.is(file))
-			return hasStatistics(file);
+		/** Check if {@link fileOrFolder} contains notes with items. */
+		exists: (fileOrFolder: TAbstractFile | TAbstractFile[]): boolean => {
+			Env.log.data("DataProvider:stats.exists:", fileOrFolder);
 
-		// Abort as soon as soon as possible
-		return Arr.isNonEmpty(Api.File.getMarkdownFilesRecursive(file, (f) => {
-			const has = hasStatistics(f);
-			return { include: has, stop: has };
-		}));
-	}
+			const hasItems: (file: TFile) => boolean = (file) =>
+				this.store.noteHasItems(asNoteID(file));
 
-	filesWithStats(file: TAbstractFile | TAbstractFile[]): TFile[] {
-		Env.log.data("DataProvider:filesWithStats", ", file:", file);
-		return Api.File.getMarkdownFilesRecursive(file, (file) => this.hasStatistics(file));
-	}
+			if (Api.File.is(fileOrFolder))
+				return hasItems(fileOrFolder);
 
-	public getCollection = (id: DeckID) =>
-		this.store.getDeck(id);
+			// Abort as soon as soon as possible
+			return Arr.isNonEmpty(Api.File.getMarkdownFilesRecursive(fileOrFolder, (f) => {
+				const has = hasItems(f);
+				return { include: has, stop: has };
+			}));
+		},
 
-	public getAllCollections = () =>
-		this.store.getAllDecks();
+		/** Filters the given files and folders to those that contain items. */
+		filter: (fileOrFolder: TAbstractFile | TAbstractFile[]): TFile[] => {
+			Env.log.data("DataProvider:stats.filter:", fileOrFolder);
+			return Api.File.getMarkdownFilesRecursive(fileOrFolder, (f) => this.stats.exists(f));
+		},
+	};
 
-	public getAllItems = () =>
-		this.store.getAllCards();
-
-	public getAllItemsInCollection = (collection: DeckIDDataTuple | DeckIDDataTuple[]) =>
-		this.store.getAllCardsForDeck(Arr.from(collection).map(deck => deck.id));
-
-	public getAllItemsInCollectionByID = (deckID: DeckID | DeckID[]) =>
-		this.store.getAllCardsForDeck(deckID);
-
-	public getAllNotes = () =>
-		this.store.getAllNotes();
 }

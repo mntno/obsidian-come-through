@@ -1,50 +1,8 @@
-import { Env } from "env";
-import { deepEqual } from 'fast-equals';
-import { isString } from "TypeAssistant";
-import { PLUGIN_NAME } from "ui/constants";
-
-export interface PluginSettings {
-	/** Trimmed. */
-	uiPrefix: string;
-	hideCardSectionMarker: boolean;
-	hideDeclarationInReadingView: boolean;
-	/** Defines the time duration in seconds after which "removed" metadata items are eligible for permanent deletion. Items with a "removed date" property older than the current time minus this threshold will be purged. Must be a non-negative integer. */
-	removedItemsPurgeThreshold: number;
-	defaultScheduler: string;
-	schedulers: Record<string, SchedulerSetting>;
-}
-
-export interface SchedulerConfigSettingItem {
-	enableFuzz: boolean;
-}
-
-export interface FixedIntervalSchedulerConfigSettingItem extends SchedulerConfigSettingItem {
-	intervalMin: number;
-}
-
-export interface FsrsSchedulerConfigSettingItem extends SchedulerConfigSettingItem {
-	reviewSortOrder: string;
-}
-
-export interface FsrsScheduler {
-	type: "fsrs";
-	config: FsrsSchedulerConfigSettingItem;
-}
-
-export interface FixedIntervalScheduler {
-	type: "fixedInterval";
-	config: FixedIntervalSchedulerConfigSettingItem;
-}
-
-export type SchedulerSetting = FsrsScheduler | FixedIntervalScheduler;
-const SCHEDULER_ID_DEFAULT = "default";
-const DEFAULT_SCHEDULER: FsrsScheduler = {
-	type: "fsrs",
-	config: {
-		enableFuzz: true,
-		reviewSortOrder: "due"
-	}
-} satisfies FsrsScheduler;
+import { Env } from "#/env";
+import { SettingDefaults } from "#/settings/SettingDefaults";
+import type { PluginSettings, ProcessorSettings, SchedulerSetting } from "#/settings/types";
+import { Str } from "#/utils/ts";
+import { deepEqual } from "fast-equals";
 
 export type SettingsChanged = (settings: PluginSettings, isExternal: boolean) => Promise<void> | void;
 
@@ -58,17 +16,6 @@ export class SettingsManager {
 	/** Saves the {@link settings} to disk. */
 	public readonly save: (changedInfo?: SettingsChangedInfo) => Promise<void>;
 
-	public static readonly DEFAULT_DATA: PluginSettings = {
-		uiPrefix: PLUGIN_NAME,
-		hideCardSectionMarker: false,
-		hideDeclarationInReadingView: false,
-		removedItemsPurgeThreshold: 24 * 60 * 60,
-		defaultScheduler: SCHEDULER_ID_DEFAULT,
-		schedulers: {
-			[SCHEDULER_ID_DEFAULT]: DEFAULT_SCHEDULER
-		}
-	};
-
 	public constructor(
 		settings: PluginSettings,
 		save: (settings: PluginSettings) => Promise<void>,
@@ -79,6 +26,37 @@ export class SettingsManager {
 			onSaved(changedInfo);
 			await this.notifyOnChangedListeners(false);
 		};
+	}
+
+	/**
+	 * Merges raw (potentially partial) settings with defaults to produce a complete {@link PluginSettings} object.
+	 *
+	 * @param rawSettings - Deserialized settings to handle, or `undefined` if settings have never been serialized.
+	 * @returns A new {@link PluginSettings} object with all fields present.
+	 */
+	public static fromPartial(rawSettings: Partial<PluginSettings> | undefined): PluginSettings {
+		const defaults = SettingDefaults.forInitial();
+
+		// Prepare a temporary settings object by merging top-level properties.
+		const merged = {
+			...defaults,
+			...rawSettings || {}
+		};
+
+		// Explicitly merge the nested `schedulers` object.
+		// This combines the default schedulers with any schedulers from the loaded data.
+		// This only adds the default scheduler object(s) if their keys are missing, but it doesn't go deeper than that, i.e., if a default key is there but some of that object's keys are missing, those missing keys will not be added.
+		merged.schedulers = {
+			...defaults.schedulers,
+			...(rawSettings?.schedulers || {})
+		};
+
+		merged.processors = {
+			...defaults.processors,
+			...(rawSettings?.processors || {})
+		} satisfies ProcessorSettings;
+
+		return merged;
 	}
 
 	/**
@@ -120,9 +98,15 @@ export class SettingsManager {
 
 	private registeredChangedCallbacks: SettingsChanged[] = [];
 
+	/** @returns The settings of the selected default scheduler. */
 	public get defaultScheduler(): SchedulerSetting {
-		const scheduler = this.settings.schedulers[isString(this.settings.defaultScheduler) ? this.settings.defaultScheduler : SCHEDULER_ID_DEFAULT];
-		Env.assert(scheduler !== undefined, "Corrupt settings.");
-		return scheduler !== undefined ? scheduler : DEFAULT_SCHEDULER;
+		const defaultScheduler = this.settings.schedulers[
+			Str.is(this.settings.defaultScheduler)
+				? this.settings.defaultScheduler
+				: SettingDefaults.forDefault.id
+		];
+		Env.assert(defaultScheduler !== undefined, "Corrupt settings.");
+
+		return defaultScheduler !== undefined ? defaultScheduler : SettingDefaults.forDefault.scheduler;
 	}
 }

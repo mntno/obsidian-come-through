@@ -1,7 +1,7 @@
-import { StatisticsData } from 'data/DataStore';
-import { Rating } from 'scheduling/types';
-import { Card, Grade as FsrsGrade, Rating as FsrsRating, State, TypeConvert } from 'ts-fsrs';
-import { Str } from 'utils/ts';
+import { StatisticsData } from "#/data/types";
+import { Rating } from '#/scheduling/types';
+import { Str } from '#/utils/ts';
+import { Card, Grade as FsrsGrade, Rating as FsrsRating, State, TypeConvert } from "ts-fsrs";
 
 
 export const FsrsConvert = {

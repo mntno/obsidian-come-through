@@ -3,6 +3,7 @@ import { DeckID } from "#/data/FullID";
 import { BaseModal } from "#/modals/BaseModal";
 import { HtmlTag } from "#/utils/dom/constants";
 import { Win } from "#/utils/dom/dom";
+import { Win as ObsWin } from "#/utils/obs/dom";
 import { Str } from "#/utils/ts";
 import { App, ButtonComponent, Setting } from "obsidian";
 
@@ -107,7 +108,7 @@ export class DeckModal extends BaseModal {
 		if (this.onSubmit !== undefined && this.result !== undefined) {
 			const result = this.result;
 			const onSubmit = this.onSubmit;
-			Win.Timeout.set(this.contentEl, 1, () => onSubmit(result));
+			Win.Timeout.set(ObsWin.from(this.contentEl), 1, () => onSubmit(result));
 		}
 	}
 

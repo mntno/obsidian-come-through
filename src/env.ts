@@ -1,17 +1,17 @@
-/* eslint-disable obsidianmd/rule-custom-message -- Only errors and asserts are logged in production, which should never happen. */
 import { Platform } from "obsidian";
 
 const isProduction = process.env["NODE_ENV"] === "production";
 const isDev = !isProduction;
+const assertConsole: Pick<Console, "assert"> = console;
 
-const noopLogger: Pick<Console, "debug" | "log" | "info" | "warn" | "error"> = {
+const noopLogger: Pick<Console, "debug" | "log" | "info" | "warn" | "error" | "assert"> = {
   debug: () => {},
 	log: () => {},
   info: () => {},
   warn: () => {},
-  error: () => {},
+	error: () => { },
+  assert: () => { },
 };
-
 const devLogger = isDev ? console : noopLogger;
 const _log = {
 	/** To provide very granular, low-level, and highly detailed information. These logs are often too numerous to be helpful during general development but are invaluable when you're trying to diagnose a specific, complex bug. */
@@ -41,7 +41,7 @@ const _log = {
 	view: noopLogger.info,
 
 	/** For data-related operations, such as SR statistics. */
-	data: noopLogger.info,
+	data: devLogger.info,
 
 	/** Parsers. */
 	p: noopLogger.info,
@@ -54,7 +54,7 @@ const _log = {
 const log: Readonly<typeof _log> = _log;
 
 const _DevContext = {
-	assert: console.assert,
+	assert: devLogger.assert,
 	log: log,
 	run: (action: () => void) => action(),
 };
@@ -66,7 +66,7 @@ const _Env = {
 	isDev: isDev,
 
 	error: console.error,
-	assert: console.assert,
+	assert: assertConsole.assert,
 	catch: console.error,
 
 	log: log,

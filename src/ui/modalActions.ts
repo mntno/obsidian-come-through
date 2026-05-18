@@ -20,7 +20,7 @@ export const OpenModal = {
 					break;
 				}
 				case "folder":
-					OpenView.reviewWithState(app, OpenView.createState.fromFile(dataProvider.filesWithStats(item.folder)), Api.Event.paneType(evt));
+					OpenView.reviewWithState(app, OpenView.createState.fromFile(dataProvider.stats.filter(item.folder)), Api.Event.paneType(evt));
 					break;
 				case "file":
 					OpenView.reviewWithState(app, OpenView.createState.fromFile(item.file), Api.Event.paneType(evt));

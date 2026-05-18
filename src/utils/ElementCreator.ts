@@ -1,5 +1,5 @@
-import { Doc } from "#/utils/dom/dom";
-import { TableSectionCreator } from "#/utils/dom/table";
+import { Doc, Win } from "#/utils/obs/dom";
+import { TableCreator, TableSectionCreator } from "#/utils/dom/table";
 import { Api } from "#/utils/obs/api";
 import { CreateElParam, createElWrapper, createWrappedEl } from "#/utils/obs/dom";
 import { Str } from "#/utils/ts";
@@ -21,10 +21,19 @@ export class ElementCreator {
 	}
 
 	public readonly node = {
-		fragment: () => this.defaultDocument.createDocumentFragment(),
+		fragment: () => Win.from(this.defaultParent).createFragment(),
 		text: (text: string) => this.defaultDocument.createTextNode(text),
 		appendText: (text: string) => this.defaultParent.appendText(text),
 		appendChild: <T extends HTMLElement | DocumentFragment>(el: T) => this.defaultParent.appendChild(el),
+	};
+
+	public readonly unwrapped = {
+		table: (builder?: (section: TableSectionCreator) => void) => {
+			const section = TableCreator.create(this.defaultParent)
+			if (builder !== undefined)
+				builder(section);
+			return section.tableEl;
+		}
 	};
 
 	public p(o?: string | ElementCreatorOptions<"p">) {

@@ -1,5 +1,5 @@
 import { DataProviderCreator } from "#/data/DataProvider";
-import { SettingsManager } from "#/Settings";
+import { SettingsManager } from "#/settings/SettingsManager";
 import { EditorCommand } from "#/ui/commands/editor";
 import { MarkdownViewCommand } from "#/ui/commands/markdownView";
 import { OpenViewCommand } from "#/ui/commands/openView";
@@ -58,6 +58,7 @@ export class UIAssistant {
 			return items;
 		},
 
+		/** Register events on ui components. */
 		registerEvents: (app: App, component: Component) => {
 
 			const ctx: UIContext = this.createContext(app);
@@ -65,7 +66,6 @@ export class UIAssistant {
 			const bind = <T extends unknown[]>(fn: (ctx: UIContext, ...args: T) => void) =>
 				(...args: T) => fn(ctx, ...args);
 
-			component.registerEvent(app.workspace.on("editor-menu", bind(MenuActions.editorMenu)));
 			component.registerEvent(app.workspace.on("file-menu", bind(MenuActions.fileMenu)));
 			component.registerEvent(app.workspace.on("files-menu", bind(MenuActions.filesMenu)));
 		}
@@ -83,7 +83,7 @@ export class UIAssistant {
 
 	public contextulize(title: string) {
 		const contextPrefix = this.settingsManager.settings.uiPrefix;
-		return Str.isNonEmpty(contextPrefix) ? `${contextPrefix}: ${title}` : title;
+		return Str.isTrimmedNonEmpty(contextPrefix) ? `${contextPrefix.trim()}: ${title}` : title;
 	}
 
 	public addMenuItem(menu: Menu, title: string, options?: {

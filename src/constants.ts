@@ -1,4 +1,4 @@
-import { CssClass as ObsCssClass } from "utils/obs/constants";
+import { CssClass as ObsCssClass } from "#/utils/obs/constants";
 
 const CSS_PREFIX = "come-through-";
 const VAR_PREFIX = "--ct-";

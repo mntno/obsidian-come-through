@@ -9,28 +9,55 @@ import tseslint from "typescript-eslint";
 // import sveltePlugin from "eslint-plugin-svelte";
 // import svelteParser from "svelte-eslint-parser";
 
+
+import { DEFAULT_ACRONYMS } from "eslint-plugin-obsidianmd/dist/lib/rules/ui/acronyms.js";
+
+/**
+ * `brands` preserves canonical casing, enforces upper case (used for proper nouns too, not just brands).
+ * `ignoreWords` are simply ignored.
+ */
+const sentenceCaseOptions = {
+	brands: [
+		// Proper nouns
+		"Thai",
+	],
+	acronyms: [
+		...DEFAULT_ACRONYMS, // ID, UI, etc. inherited
+		"FSRS",
+		"hr", // horizontal rule
+	],
+	ignoreWords: [
+		// Quoted button labels
+		"Accept",
+
+		// Scheduler
+		"Review",
+		"Learning",
+		"New",
+		"Relearning",
+		"Again",
+		"Hard",
+		"Good",
+		"Easy",
+	],
+	enforceCamelCaseLower: false,
+	mode: "strict",
+};
+
 export default defineConfig(
 	{
 		ignores: [
 			"**/dev-vault/**",
-			"**/dist/**"
+			"**/dist/**",
 		],
 	},
 	eslint.configs.recommended,
 	...tseslint.configs.recommended, // https://typescript-eslint.io/users/configs#recommended-configurations
-	...obsidianmd.configs.recommended,
+	...obsidianmd.configs.recommendedWithLocalesEn,
 	{
-		// Fix: Turn off rules for config files or scripts that cause this error when linting:
-		// Error: Error while loading rule 'X':
-		// 	You have used a rule which requires type information, but don't have parserOptions set to generate type information for this file.
-		// See https://tseslint.com/typed-linting for enabling linting with type information.
-		// Parser: typescript-eslint/parser
-		// Occurred while linting /…/esbuild.config.mjs (eslint.config.js, tsconfig.json)
-		files: ["*.js", "*.json", "*.mjs"],
+		files: ["esbuild.config.mjs", "version-bump.mjs", "vitest.config.ts", "vitest.setup.ts"],
 		rules: {
-			"@typescript-eslint/no-deprecated": "off",
-			"@typescript-eslint/no-unused-expressions": "off",
-			"obsidianmd/no-plugin-as-component": "off",
+			"obsidianmd/no-nodejs-modules": "off",
 		},
 	},
 	{
@@ -41,7 +68,9 @@ export default defineConfig(
 		languageOptions: {
 			parser: tseslint.parser,
 			parserOptions: {
-				projectService: true,
+				projectService: {
+					allowDefaultProject: ["vitest.config.ts", "vitest.setup.ts"],
+				},
 				sourceType: "module",
 				ecmaVersion: 2022,
 			},
@@ -52,6 +81,8 @@ export default defineConfig(
 		},
 		rules: {
 			"no-param-reassign": ["warn", { "props": false }],
+
+			"@typescript-eslint/no-deprecated": "warn",
 
 			// You should always have "no-unused-vars": "off" alongside @typescript-eslint/no-unused-vars,
 			// https://typescript-eslint.io/rules/no-unused-vars/
@@ -82,25 +113,15 @@ export default defineConfig(
 			}],
 			"@typescript-eslint/switch-exhaustiveness-check": "error",
 
-			"obsidianmd/ui/sentence-case": [
-        "warn",
-        {
-          brands: ["Obsidian"],
-					acronyms: ["FSRS"],
-					ignoreWords: [
-						"Review",
-						"Learning",
-						"New",
-						"Relearning",
-						"Again",
-						"Hard",
-						"Good",
-						"Easy",
-					],
-					enforceCamelCaseLower: false,
-          mode: "strict",
-        },
-      ],
+			"obsidianmd/ui/sentence-case": ["warn", sentenceCaseOptions],
+			"obsidianmd/ui/sentence-case-locale-module": ["warn", sentenceCaseOptions],
 		},
 	},
+	// Remove when min version is 1.13
+	{
+		files: ["src/ui/settings/SettingTab.ts"],
+		rules: {
+			"eslint-comments/no-restricted-disable": "off",
+		},
+	}
 );

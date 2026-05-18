@@ -1,5 +1,6 @@
-import { DataStore, StatisticsData } from "#/data/DataStore";
+import { DataStore } from "#/data/DataStore";
 import { FullID, NoteID } from "#/data/FullID";
+import { StatisticsData } from "#/data/types";
 import { DeclarationCodec } from "#/declarations/DeclarationCodec";
 import { DeclarationInfo, DeclarationParser, PostParseInfo } from "#/declarations/DeclarationParser";
 import { CardDeclarable, ExplicitDeclarationAssistant } from "#/declarations/ExplicitDeclaration";

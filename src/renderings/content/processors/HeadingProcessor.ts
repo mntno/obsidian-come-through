@@ -1,31 +1,29 @@
-import { ContentRendererPostProcessor, ContentRendererProcessor, PostProcessorParameter } from "renderings/content/ContentRendererProcessor";
-import { UnexpectedUndefinedError } from "utils/errors";
+import { ContentRendererProcessor } from "#/renderings/content/processors/bases";
+import { ContentRendererPostProcessor, PostProcessorParameter } from "#/renderings/content/processors/types";
+import { UnexpectedUndefinedError } from "#/utils/errors";
 
-export class HeadingProcessor extends ContentRendererProcessor implements ContentRendererPostProcessor {
-	private readonly baseHeadingLevel: number;
-	private readonly allowNonConsecutiveLevels: boolean;
+export type HeadingProcessorConfig = {
+	/** The base heading level to normalize against. */
+	baseHeadingLevel: number;
+	/** If true, allows non-consecutive heading levels; otherwise, enforces consecutive levels. */
+	allowNonConsecutiveLevels: boolean;
+};
 
-	public constructor(baseHeadingLevel: number, allowNonConsecutiveLevels: boolean = false) {
-		super();
-
-		this.baseHeadingLevel = baseHeadingLevel;
-		this.allowNonConsecutiveLevels = allowNonConsecutiveLevels;
-	}
+export class HeadingProcessor extends ContentRendererProcessor<HeadingProcessorConfig> implements ContentRendererPostProcessor {
 
 	public handleHtml(param: PostProcessorParameter) {
-		HeadingProcessor.normalize(param, this.baseHeadingLevel, this.allowNonConsecutiveLevels)
+		HeadingProcessor.normalize(param, this.config)
 	}
 
 	/**
 	 * Normalizes the heading levels within the provided HTML element.
 	 * It identifies the highest heading level (e.g., h1, h2) present in the element
-	 * and adjusts all headings to ensure they are relative to the `baseHeadingLevel`
-	 * set in the constructor, keeping them within the h1-h6 range.
+	 * and adjusts all headings to ensure they are relative to the {@link HeadingProcessorConfig.baseHeadingLevel}
+	 * set in the {@link config}, keeping them within the h1-h6 range.
 	 * @param param The parameter object containing the HTML element to process.
-	 * @param baseHeadingLevel The base heading level to normalize against.
-	 * @param allowNonConsecutiveLevels If true, allows non-consecutive heading levels. If false (default), enforces consecutive levels.
+	 * @param config The heading processor configuration.
 	 */
-	private static normalize(param: PostProcessorParameter, baseHeadingLevel: number, allowNonConsecutiveLevels: boolean) {
+	private static normalize(param: PostProcessorParameter, config: HeadingProcessorConfig) {
 
 		let highestLevel = 0;
 		for (let i = 1; i <= 6; i++) {
@@ -39,7 +37,7 @@ export class HeadingProcessor extends ContentRendererProcessor implements Conten
 			return; // No headings to process
 		}
 
-		const offset = baseHeadingLevel - highestLevel;
+		const offset = config.baseHeadingLevel - highestLevel;
 		const headings = Array.from(param.el.querySelectorAll('h1, h2, h3, h4, h5, h6'));
 
 		let lastAdjustedLevel = 0; // To track the level of the previous heading after adjustment
@@ -51,7 +49,7 @@ export class HeadingProcessor extends ContentRendererProcessor implements Conten
 			let targetLevel = Math.max(1, Math.min(6, currentLevel + offset));
 
 			// Then, if consecutiveLevels is true, enforce consecutiveness
-			if (!allowNonConsecutiveLevels) {
+			if (!config.allowNonConsecutiveLevels) {
 				if (lastAdjustedLevel === 0) {
 					// This is the first heading, its targetLevel is its adjusted level
 					lastAdjustedLevel = targetLevel;

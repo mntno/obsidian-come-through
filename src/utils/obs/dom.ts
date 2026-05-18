@@ -1,5 +1,5 @@
-import { Arr, Str } from "utils/ts";
-import { CssClass } from "utils/obs/constants";
+import { Arr, Str } from "#/utils/ts";
+import { CssClass } from "#/utils/obs/constants";
 
 export type CreateElParam<K extends keyof HTMLElementTagNameMap> = {
 	/** The tag name of the element to be created. */
@@ -68,7 +68,32 @@ export function createElWrapper<K extends keyof HTMLElementTagNameMap>(parent: H
 	}
 }
 
+export const Doc = {
+	/** Returns the document that the given element is located in. */
+	from: (el: HTMLElement) => el.doc,
+}
+
 export const El = {
+
+	/**
+	 * This is the string-based version of {@link createElWrapper}. It mimics how
+	 * Obsidian/CodeMirror wraps elements in a classed `<div>`. For example, an
+	 * `<audio>` tag string would be returned wrapped in a `<div class="el-audio">`.
+	 *
+	 * @param tag The tag name at the root of {@link html}.
+	 * @param html The HTML string to wrap.
+	 * @param appendPara See {@link createElWrapper}.
+	 * @returns The wrapped HTML string.
+	 */
+	createWrapper: {
+		html: <K extends keyof HTMLElementTagNameMap>(tag: K, html: string, appendPara = false) => {
+			if (appendPara)
+				return `<div class="${CssClass.wrapperClassForEl("p")}"><p>${html}</p></div>`;
+			else
+				return `<div class="${CssClass.wrapperClassForEl(tag)}">${html}</div>`;
+		},
+	},
+
 	/**
 	 * Uses Obsidian methods for 'div', 'span', and 'svg'
 	 *
@@ -98,21 +123,48 @@ export const El = {
 	},
 
 	/**
-	 * This is the string-based version of {@link createElWrapper}. It mimics how
-	 * Obsidian/CodeMirror wraps elements in a classed `<div>`. For example, an
-	 * `<audio>` tag string would be returned wrapped in a `<div class="el-audio">`.
-	 *
-	 * @param tag The tag name at the root of {@link html}.
-	 * @param html The HTML string to wrap.
-	 * @param appendPara See {@link createElWrapper}.
-	 * @returns The wrapped HTML string.
+	 * Provided by Obsidian:
+	 * On `Element`: `addClass`, `doc`, `removeClass`, `hasClass`, `toggleClass`, `win`
 	 */
-	createWrapper: {
-		html: <K extends keyof HTMLElementTagNameMap>(tag: K, html: string, appendPara = false) => {
-			if (appendPara)
-				return `<div class="${CssClass.wrapperClassForEl("p")}"><p>${html}</p></div>`;
-			else
-				return `<div class="${CssClass.wrapperClassForEl(tag)}">${html}</div>`;
+	Cls: {
+		add: (el: HTMLElement | undefined, className: string) => {
+			if (el !== undefined && !el.hasClass(className))
+				el.addClass(className);
+		},
+		remove: (el: HTMLElement | undefined, className: string) => {
+			if (el !== undefined && el.hasClass(className))
+				el.removeClass(className);
+		},
+		has: (el: HTMLElement | undefined, className: string) => {
+			return el !== undefined && el.hasClass(className);
+		},
+		toggle: (el: HTMLElement | undefined, className: string, value: boolean) => {
+			el?.toggleClass(className, value);
 		},
 	},
 };
+
+declare global {
+	interface Window {
+		createEl<K extends keyof HTMLElementTagNameMap>(tag: K, o?: DomElementInfo | string, callback?: (el: HTMLElementTagNameMap[K]) => void): HTMLElementTagNameMap[K];
+		//createDiv(o?: DomElementInfo | string, callback?: (el: HTMLDivElement) => void): HTMLDivElement;
+		//createSpan(o?: DomElementInfo | string, callback?: (el: HTMLSpanElement) => void): HTMLSpanElement;
+		//createSvg<K extends keyof SVGElementTagNameMap>(tag: K, o?: SvgElementInfo | string, callback?: (el: SVGElementTagNameMap[K]) => void): SVGElementTagNameMap[K];
+		createFragment(callback?: (el: DocumentFragment) => void): DocumentFragment;
+	}
+}
+
+export const Win = {
+	/**
+		* Use `element.win` and `element.doc` to get the window/document that your Dom element is located in.
+		*
+		* `activeWindow`/`Document` refers to the current focused window which might not be the same one your element is in.
+		*/
+	from: (elOrDoc: HTMLElement | Document) => elOrDoc.win,
+
+	/** warning  Use 'doc.win.createFragment()' instead of 'doc.createDocumentFragment()' obsidianmd/prefer-create-el */
+	createFragment: (elOrDoc: HTMLElement | Document) => Win.from(elOrDoc).createFragment(),
+
+	/** obsidianmd/prefer-create-el */
+	createEl: <K extends keyof HTMLElementTagNameMap>(elOrDoc: HTMLElement | Document, tag: K, o?: DomElementInfo | string, callback?: (el: HTMLElementTagNameMap[K]) => void) => Win.from(elOrDoc).createEl(tag, o, callback),
+}

@@ -3,14 +3,14 @@ import { DataStore } from "#/data/DataStore";
 import { Env } from "#/env";
 import { t } from "#/Localization";
 import { ContentRenderOptions } from "#/renderings/content/ContentRenderer";
-import { HeadingProcessor } from "#/renderings/content/HeadingProcessor";
-import { SettingsManager } from "#/Settings";
+import { HeadingProcessor } from "#/renderings/content/processors/HeadingProcessor";
 import { OmitIndexSignature } from "#/types";
+import { Icon } from "#/ui/constants";
 import { Api } from "#/utils/obs/api";
 import { Arr, Str } from "#/utils/ts";
-import { BaseView, BaseViewState } from "#/views/BaseView";
+import { BaseView, BaseViewState, } from "#/views/BaseView";
+import { ContentParserViewContext } from "#/views/types";
 import { IconName, TFile, ViewStateResult, WorkspaceLeaf } from "obsidian";
-import { Icon } from "ui/constants";
 
 export interface DefinedContentViewState extends BaseViewState {
 	/** Paths will be updated if the file is renamed or deleted. See {@link DefinedContentViewState.onFileRename} */
@@ -21,7 +21,7 @@ const DEFAULT_STATE: OmitIndexSignature<DefinedContentViewState> = {
 	filePaths: []
 } as const;
 
-export class DefinedContentView extends BaseView<DefinedContentViewState> {
+export class DefinedContentView extends BaseView<DefinedContentViewState, ContentParserViewContext> {
 
 	public static readonly TYPE = "come-through-view-defined-content";
 	public static createViewState(file: TFile | TFile[]): DefinedContentViewState {
@@ -41,9 +41,12 @@ export class DefinedContentView extends BaseView<DefinedContentViewState> {
 	/**
 		* @param data Used to receive data changed notifications.
 		*/
-	constructor(leaf: WorkspaceLeaf, settingsManager: SettingsManager, data: DataStore) {
-		super(leaf, settingsManager, {
-			data: data,
+	constructor(leaf: WorkspaceLeaf, ctx: ContentParserViewContext, data: DataStore) {
+		super(leaf, ctx, {
+			data: {
+				subscribeToChanges: true,
+				data: data,
+			},
 			paneMenu: {
 				addReloadItem: true
 			},
@@ -149,7 +152,7 @@ export class DefinedContentView extends BaseView<DefinedContentViewState> {
 		}
 
 		// <summary> is styled as a <h2>, this will normalize its children to start at <h3>.
-		this.contentRenderer.setCustomProcessors([new HeadingProcessor(3)]);
+		this.contentRenderer.setCustomProcessors([new HeadingProcessor(this.ctx.processorConfig.heading(3))]);
 
 		// Keeps track of which details elements have been dynamically created on expand.
 		const hasRendered = new WeakMap<HTMLDetailsElement, boolean>();
@@ -173,11 +176,7 @@ export class DefinedContentView extends BaseView<DefinedContentViewState> {
 				sourcePath: file.path,
 			};
 
-			const parsedContent = await ContentParser.getCardFromFile(file, this.app, {
-				contentRead: {
-					hideCardSectionMarker: this.settingsManager.settings.hideCardSectionMarker,
-				}
-			});
+			const parsedContent = await ContentParser.getCardFromFile(file, this.app, this.ctx.contentParserConfig.getParseOptions());
 
 			for (const parsedUnit of Object.values(parsedContent)) {
 

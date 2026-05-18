@@ -17,8 +17,14 @@ export const Api = {
 		getLanguage(): string {
 			if (requireApiVersion("1.8.7"))
 				return getLanguage();
-			else
-				return window.localStorage.getItem("language") || "en"; // eslint-disable-line obsidianmd/prefer-get-language -- `getLanguage()` was added in 1.8.7.
+			else {
+				const storage = window.localStorage; // `getLanguage()` was added in 1.8.7.
+				return storage.getItem("language") || "en";
+			}
+		},
+
+		async writeToClipboard(text: string): Promise<void> {
+			await navigator.clipboard.writeText(text);
 		},
 	},
 

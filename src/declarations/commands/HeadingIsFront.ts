@@ -1,11 +1,11 @@
 import { CommandableDeclarable } from "#/declarations/Commandable";
-import { CommandDeclarationParsable } from "#/declarations/CommandDeclarationParser";
+import { CommandDeclarationParsable, CommandDeclarationParserParam } from "#/declarations/CommandDeclarationParser";
 import { CommandName, Commands } from "#/declarations/CommandNames";
 import { HeadingsCommandableAssistant, HeadingsCommandableDeclarable, HeadingsDeclarationParser } from "#/declarations/commands/HeadingsCommandable";
 import { IDScope } from "#/declarations/ExplicitDeclaration";
-import { CacheItem, Loc } from "obsidian";
+import { Loc } from "obsidian";
 
-export interface HeadingIsFrontDeclarable extends HeadingsCommandableDeclarable { // eslint-disable-line @typescript-eslint/no-empty-object-type
+export interface HeadingIsFrontDeclarable extends HeadingsCommandableDeclarable { // eslint-disable-line @typescript-eslint/no-empty-object-type -- Intentionally left empty to document a distinct abstraction and facilitate future extension.
 }
 
 /** Helpers related to {@link HeadingIsFrontDeclarable}. */
@@ -18,7 +18,6 @@ export class HeadingIsFrontAssistant extends HeadingsCommandableAssistant {
 		return (Commands.Name.HeadingIsFront as readonly CommandName[]).includes(value.name);
 	}
 }
-const ThisAssistant = HeadingIsFrontAssistant;
 
 export class HeadingIsFrontParser extends HeadingsDeclarationParser<HeadingIsFrontDeclarable> {
 
@@ -28,63 +27,50 @@ export class HeadingIsFrontParser extends HeadingsDeclarationParser<HeadingIsFro
 		return null;
 	}
 
-	public parse(parentHeadingLevel: number, inBetweenDelimiter: CacheItem, index: number, delimiters: CacheItem[]) {
-		if (!HeadingIsFrontParser.isHeadingCache(inBetweenDelimiter))
+	public parse(param: CommandDeclarationParserParam) {
+		const headingDelimiter = ThisParser.asHeadingCache(param.inBetweenDelimiter)
+		if (headingDelimiter === null)
 			return;
 
 		// Only interested in headings on the specified level
-		if (!this.isOnSpecifiedLevel(parentHeadingLevel, inBetweenDelimiter))
+		if (!this.isOnSpecifiedLevel(param.sectionLevel, headingDelimiter))
 			return;
 
-		let id = inBetweenDelimiter.heading;
+		let id = headingDelimiter.heading;
 		let idScope: IDScope = IDScope.Note;
 
-		const uniqueID = this.tryParseUniqueID(inBetweenDelimiter.heading);
+		const uniqueID = this.tryParseUniqueID(headingDelimiter.heading);
 		if (uniqueID !== null) {
 			id = uniqueID;
 			idScope = IDScope.Unique;
 		}
 
 		const startLocation: Loc = {
-			line: inBetweenDelimiter.position.start.line,
-			col: inBetweenDelimiter.position.start.col,
-			offset: inBetweenDelimiter.position.start.offset,
+			line: param.inBetweenDelimiter.position.start.line,
+			col: param.inBetweenDelimiter.position.start.col,
+			offset: param.inBetweenDelimiter.position.start.offset,
 		};
 		const endLocation: Loc = {
-			line: inBetweenDelimiter.position.end.line,
-			col: inBetweenDelimiter.position.end.col,
-			offset: inBetweenDelimiter.position.end.offset,
+			line: param.inBetweenDelimiter.position.end.line,
+			col: param.inBetweenDelimiter.position.end.col,
+			offset: param.inBetweenDelimiter.position.end.offset,
 		};
 
 		this.generateDeclaration(
 			id,
 			true,
-			{
-				position: {
-					start: startLocation,
-					end: startLocation,
-				}
-			},
-			{
-				position: {
-					start: endLocation,
-					end: endLocation,
-				}
-			},
+			ThisParser.create.sectionRange({ position: { start: startLocation, end: startLocation } }, { position: { start: endLocation, end: endLocation } }),
 			idScope,
 		);
 
 		this.generateDeclaration(
 			id,
 			false,
-			{
-				position: {
-					start: endLocation,
-					end: endLocation,
-				}
-			},
-			HeadingsDeclarationParser.findNextHeading(inBetweenDelimiter.level, index, delimiters),
+			ThisParser.create.sectionRange({ position: { start: endLocation, end: endLocation } }, ThisParser.find.nextHeading(headingDelimiter.level, param.index, param.delimiters)),
 			idScope,
 		);
 	}
 }
+
+const ThisAssistant = HeadingIsFrontAssistant;
+const ThisParser = HeadingIsFrontParser;

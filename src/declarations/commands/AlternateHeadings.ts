@@ -1,13 +1,10 @@
 import { CommandableDeclarable } from "#/declarations/Commandable";
-import { CommandDeclarationParsable } from "#/declarations/CommandDeclarationParser";
-import { Commands, CommandName } from "#/declarations/CommandNames";
-import { IDScope } from "#/declarations/ExplicitDeclaration";
+import { CommandDeclarationParsable, CommandDeclarationParserParam } from "#/declarations/CommandDeclarationParser";
+import { CommandName, Commands } from "#/declarations/CommandNames";
 import { HeadingsCommandableAssistant, HeadingsCommandableDeclarable, HeadingsDeclarationParser } from "#/declarations/commands/HeadingsCommandable";
+import { IDScope } from "#/declarations/ExplicitDeclaration";
 
-import { FileParser } from "#/utils/obs/FileParser";
-import { CacheItem } from "obsidian";
-
-export interface AlternateHeadingsDeclarable extends HeadingsCommandableDeclarable { // eslint-disable-line @typescript-eslint/no-empty-object-type
+export interface AlternateHeadingsDeclarable extends HeadingsCommandableDeclarable { // eslint-disable-line @typescript-eslint/no-empty-object-type -- Intentionally left empty to document a distinct abstraction and facilitate future extension.
 }
 
 /** Helpers related to {@link AlternateHeadingsDeclarable}. */
@@ -20,7 +17,6 @@ export class AlternateHeadingsAssistant extends HeadingsCommandableAssistant {
 		return (Commands.Name.AlternateHeadings as readonly CommandName[]).includes(value.name);
 	}
 }
-const ThisAssistant = AlternateHeadingsAssistant;
 
 export class AlternateHeadingsParser extends HeadingsDeclarationParser<AlternateHeadingsDeclarable> {
 
@@ -30,13 +26,13 @@ export class AlternateHeadingsParser extends HeadingsDeclarationParser<Alternate
 		return null;
 	}
 
-	public parse(parentHeadingLevel: number, inBetweenDelimiter: CacheItem, index: number, delimiters: CacheItem[]) {
+	public parse(param: CommandDeclarationParserParam) {
 
-		if (!FileParser.isHeadingCache(inBetweenDelimiter))
+		if (!ThisParser.isHeadingCache(param.inBetweenDelimiter))
 			return;
 
 		// Only interested in headings on the specified level
-		if (!this.isOnSpecifiedLevel(parentHeadingLevel, inBetweenDelimiter))
+		if (!this.isOnSpecifiedLevel(param.sectionLevel, param.inBetweenDelimiter))
 			return;
 
 		const isFront = this.generatedDeclarations.length % 2 == 0;
@@ -44,12 +40,12 @@ export class AlternateHeadingsParser extends HeadingsDeclarationParser<Alternate
 		let idScope: IDScope;
 
 		if (isFront) {
-			const uniqueID = this.tryParseUniqueID(inBetweenDelimiter.heading);
+			const uniqueID = this.tryParseUniqueID(param.inBetweenDelimiter.heading);
 			if (uniqueID !== null) {
 				id = uniqueID;
 				idScope = IDScope.Unique;
 			} else {
-				id = inBetweenDelimiter.heading;
+				id = param.inBetweenDelimiter.heading;
 				idScope = IDScope.Note;
 			}
 		}
@@ -62,9 +58,11 @@ export class AlternateHeadingsParser extends HeadingsDeclarationParser<Alternate
 		this.generateDeclaration(
 			id,
 			isFront,
-			inBetweenDelimiter,
-			HeadingsDeclarationParser.findNextHeading(inBetweenDelimiter.level, index, delimiters),
+			ThisParser.create.sectionRange(param.inBetweenDelimiter, ThisParser.find.nextHeading(param.inBetweenDelimiter.level, param.index, param.delimiters)),
 			idScope
 		);
 	}
 }
+
+const ThisAssistant = AlternateHeadingsAssistant;
+const ThisParser = AlternateHeadingsParser;

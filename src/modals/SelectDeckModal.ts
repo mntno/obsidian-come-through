@@ -1,6 +1,7 @@
 import { DataProvider } from "#/data/DataProvider";
 import { DeckIDDataTuple } from "#/data/DataStore";
 import { HtmlTag } from "#/utils/dom/constants";
+import { El } from "#/utils/obs/dom";
 import { Arr, Str } from "#/utils/ts";
 import { App, SuggestModal } from "obsidian";
 
@@ -30,7 +31,7 @@ export class SelectDeckModal extends SuggestModal<DeckIDDataTuple> {
 		this.onChoose = onChoose;
 
 		this.setPlaceholder("Select deck");
-		this.collections = [...[SelectDeckModal.ALL_DECKS], ...decks ?? this.dataProvider.getAllCollections()];
+		this.collections = [...[SelectDeckModal.ALL_DECKS], ...decks ?? this.dataProvider.collection.all()];
 	}
 
 	getSuggestions(query: string): DeckIDDataTuple[] | Promise<DeckIDDataTuple[]> {
@@ -38,11 +39,13 @@ export class SelectDeckModal extends SuggestModal<DeckIDDataTuple> {
 	}
 
 	renderSuggestion(value: DeckIDDataTuple, el: HTMLElement): void {
-		const numberOfCards = SelectDeckModal.isAllDecks(value)
-			? this.dataProvider.getAllItemsInCollection(this.collections).length
-			: this.dataProvider.getAllItemsInCollectionByID(value.id).length;
+		const numberOfCards = this.dataProvider.item.allInCollection(
+			SelectDeckModal.isAllDecks(value)
+				? this.collections.map(d => d.id)
+				: [value.id]
+		).length;
 
-		el.createEl("div", { text: `${value.data.n}` }).createEl("small", { text: ` (${numberOfCards})` });
+		El.create(el, "div", { text: `${value.data.n}` }).createEl("small", { text: ` (${numberOfCards})` });
 		el.createEl("small", { text: value.data.p.length > 0 ? this.descendants(value) : Str.EMPTY });
 	}
 
@@ -51,10 +54,10 @@ export class SelectDeckModal extends SuggestModal<DeckIDDataTuple> {
 	}
 
 	private descendants(deck: DeckIDDataTuple): string {
-		const parentID = Arr.firstOrNull(deck.data.p);
-		if (parentID !== null) {
-			const pp = this.dataProvider.getCollection(parentID);
-			if (pp) {
+		const parentID = Arr.first(deck.data.p);
+		if (parentID !== undefined) {
+			const pp = this.dataProvider.collection.fromID(parentID);
+			if (pp !== null) {
 				const a = this.descendants({ id: parentID, data: pp });
 				return a.length > 0 ? `${a} > ${pp.n}` : pp.n;
 			}

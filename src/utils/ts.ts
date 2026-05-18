@@ -1,7 +1,7 @@
 import { Env } from "#/env";
 import { StrictKeys, UnsignedInteger } from "#/types";
 import { Win } from "#/utils/dom/dom";
-import { TimeoutError } from "#/utils/errors";
+import { TimeoutError, UnexpectedUndefinedError } from "#/utils/errors";
 
 type ArrMatch<T> =
 	| { kind: "empty" }
@@ -21,7 +21,10 @@ export const Arr = {
 		return a[0]!;
 	},
 
-	firstOrNull: <T>(a: T[]): T | null => a[0] !== undefined ? a[0] : null,
+	first: <T>(a: T[]): T | undefined => a.length > 0 ? a[0] : undefined,
+	last: <T>(a: T[]): T | undefined => a.length > 0 ? a[a.length - 1] : undefined,
+
+	empty: Object.freeze([]) as readonly unknown[],
 
 	/**
 		* Checks whether {@link v} is a non-empty array.
@@ -30,16 +33,15 @@ export const Arr = {
 	isNonEmpty: <T>(v: unknown): v is T[] => Arr.is(v) && v.length > 0,
 
 	isEmpty: <T>(a: T[] | Readonly<T[]>): boolean => Arr.is(a) && a.length === 0,
-	/**
-		* Returns {@link v} if it is a non-empty array, otherwise `undefined`.
-		* @returns The original array if non-empty, else `undefined`.
-		*/
-	nonEmpty: <T>(a: T[]): T[] | undefined => Arr.isNonEmpty(a) ? a : undefined,
+
+	/** @returns The input value {@link v} if it is a non-empty array, otherwise `undefined`. */
+	nonEmpty: <T>(v: unknown): T[] | undefined => Arr.isNonEmpty<T>(v) ? v : undefined,
 
 	toMutable: <T>(a: readonly T[]): T[] => [...a],
 
 	clear: <T>(a: T[]): void => { a.length = 0; },
 
+	/** @returns An empty array if {@link a} is `null` or `undefined`; otherwise {@link a}. */
 	orEmpty: <T>(a: T[] | null | undefined): T[] => a === undefined || a === null ? [] : a,
 
 	match: <T>(a: T[] | null | undefined): ArrMatch<T> => {
@@ -49,13 +51,24 @@ export const Arr = {
 			return { kind: "one", item: a[0]! };
 		return { kind: "many", items: a };
 	},
+
+	/**
+	 * Short-hand to use when you know the index exists, e.g., in a `for` loop.
+	 * @throws Throws a {@link UnexpectedUndefinedError}
+	 */
+	expAt: <T>(a: T[], idx: number) => {
+		const v = a[idx];
+		if (v === undefined)
+			throw new UnexpectedUndefinedError();
+		return v;
+	},
 };
 
 export const Async = {
 	/**
 	 * @param promise The promise to execute
 	 * @param timeoutMs The timeout in milliseconds
-	 * @param elOrDoc Used to retrieve the window object for the timeout
+	 * @param win The window to set the timeout on
 	 * @returns A new promise that will resolve with the original promise's result or reject with {@link Err.TimeoutError}
 	 * @throws Throws a {@link Err.TimeoutError} if the promise does not settle within the specified timeout
 	 *
@@ -70,10 +83,10 @@ export const Async = {
 	 * }
 	 * ```
 	 */
-	withTimeout: <T>(promise: Promise<T>, timeoutMs: number, elOrDoc: HTMLElement | Document): Promise<T> => {
+	withTimeout: <T>(promise: Promise<T>, timeoutMs: number, win: Window): Promise<T> => {
 		// Create a promise that rejects in <timeoutMs> milliseconds
 		const timeoutPromise = new Promise<never>((_, reject) => {
-			Win.Timeout.set(elOrDoc, timeoutMs, () => {
+			Win.Timeout.set(win, timeoutMs, () => {
 				reject(new TimeoutError(`Operation timed out after ${timeoutMs}ms`));
 			});
 		});
@@ -110,12 +123,27 @@ export const KeyValue = {
 export const Num = {
 
 	is: (value: unknown): value is number => {
-		return typeof value === "number" && !Number.isNaN(value);
+		return Number.isFinite(value); // Number.isFinite implies typeof value === "number" and excludes both NaN and ±Infinity,
 	},
 
 	isNaN: (value: unknown) => Number.isNaN(value),
 
 	isZero: (value: unknown) => Num.is(value) && value === 0,
+
+	fromStr: (s: string) => {
+		const ts = Str.trimmedNonEmpty(s);
+		if (ts === undefined)
+			return null;
+		const n = Number(ts);
+		return Num.is(n) ? n : null;
+	},
+
+	fromStrOrThrow: (s: string): number => {
+		const n = Num.fromStr(s);
+		if (n === null)
+			throw new TypeError(`Cannot convert to number: "${s}"`);
+		return n;
+	},
 
 	UInt: {
 		assert: (n: number) => Env.assert(isUnsignedInteger(n)),
@@ -131,7 +159,14 @@ export const Num = {
 
 export const Null = {
 	is: (value: unknown): value is null => value === null, // typeof value === "object" && !Str.is(value) && !Num.is(value) && !Bln.is(value)
-	fromUndefined: <T>(value: T | undefined): T | null => value === undefined ? null : value,
+	/** Treat `undefined` as `null`. */
+	fromNullish: <T>(value: T | undefined | null): T | null => value === undefined ? null : value,
+};
+
+export const Nullish = {
+	ifNot: <T, R>(value: T | null | undefined, ifPresent: (value: T) => R, ifAbsent: () => R): R => {
+		return value !== null && value !== undefined ? ifPresent(value) : ifAbsent();
+	}
 };
 
 export const Obj = {
@@ -145,7 +180,18 @@ export const Obj = {
 		return typeof value === "object" && value !== null; // In JavaScript runtime, `null` is an object. In TypeScript, with `strictNullChecks`, it is not.
 	},
 
-	try: (value: unknown) => Obj.is(value) ? value : null,
+	try: <T extends object>(value: unknown): T | null => Obj.is(value) ? value as T : null,
+
+	/**
+	 * Short-hand to use when you know the key exists.
+	 * @throws Throws a {@link UnexpectedUndefinedError}
+	 */
+	expAt: <K extends string | number | symbol, V>(obj: Record<K, V>, key: K): V => {
+		const v = obj[key];
+		if (v === undefined)
+			throw new UnexpectedUndefinedError();
+		return v;
+	},
 
 	/**
 		* Trims all string values of top-level properties of {@link obj} in place (non-recursive).
@@ -230,7 +276,6 @@ export const Str = {
 
 	/**
 		* Checks whether `value` is a string.
-		*
 		* @param value The value to check.
 		* @returns `true` if `value` is a string, otherwise `false`.
 		*/
@@ -238,19 +283,42 @@ export const Str = {
 
 	/**
 		* Checks whether `value` is a non-empty string.
-		*
 		* @param value The value to check.
 		* @returns `true` if `value` is a string with at least one character, otherwise `false`.
 		*/
-	isNonEmpty: (value: unknown): value is string => typeof value === "string" && value !== "",
+	isNonEmpty: (value: unknown): value is string => typeof value === "string" && value !== Str.EMPTY,
+
+	/**
+		* Checks whether `value` is a string that is non-empty after trimming.
+		* @param value The value to check.
+		* @returns `true` if `value` is a string that is non-empty after trimming, otherwise `false`.
+		*/
+	isTrimmedNonEmpty: (value: unknown): value is string => Str.isNonEmpty(value) && value.trim() !== Str.EMPTY,
 
 	/**
 		* Returns `value` if it is a non-empty string, otherwise `undefined`.
-		*
 		* @param value The value to check.
 		* @returns The original string if non-empty, else `undefined`.
 		*/
-	nonEmpty: (value: unknown): string | undefined => typeof value === "string" && value !== "" ? value : undefined,
+	nonEmpty: (value: unknown): string | undefined => Str.isNonEmpty(value) ? value : undefined,
+
+	/**
+		* Returns the trimmed `value` if it is a non-empty string, otherwise `undefined`.
+		* @param value The value to check.
+		* @returns The trimmed string if non-empty, else `undefined`.
+		*/
+	trimmedNonEmpty: (value: unknown): string | undefined => Str.is(value) ? Str.nonEmpty(value.trim()) : undefined,
+
+	/**
+	 * Converts a string to sentence case.
+	 * @returns The sentence-cased string, or the original value if it is empty.
+	 */
+	toSingleSentenceCase: (str: string): string => {
+		const s = Str.nonEmpty(str);
+		if (s === undefined)
+			return str;
+		return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+	},
 
 	/**
 		* Values set to `undefined` are invalid JSON.

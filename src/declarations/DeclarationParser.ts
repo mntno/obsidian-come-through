@@ -1,15 +1,15 @@
 import { FullID, IDFilter, NoteID } from "#/data/FullID";
 import { CommandableAssistant, CommandableDeclarable } from "#/declarations/Commandable";
-import { CommandDeclarationParsable } from "#/declarations/CommandDeclarationParser";
+import { CommandDeclarationParsable, CommandDeclarationParserOptions } from "#/declarations/CommandDeclarationParser";
 import { DeclarationConstants } from "#/declarations/constants";
 import { DeclarationCodec, YamlParseErrorCallback } from "#/declarations/DeclarationCodec";
 import { CardDeclarable, DefaultableCardDeclarable, ExplicitDeclarationAssistant } from "#/declarations/ExplicitDeclaration";
 import { ParserRegistry } from "#/declarations/ParserRegistry";
 import { asNoteID, fullIDFromDeclaration } from "#/TypeAssistant";
 import { UnexpectedUndefinedError } from "#/utils/errors";
-import { FileParser, OffsetRange, SectionRange } from "#/utils/obs/FileParser";
+import { Api } from "#/utils/obs/api";
+import { FileParser, OffsetRange, SectionRange, SectionType } from "#/utils/obs/FileParser";
 import { App, CachedMetadata, CacheItem, FrontMatterCache, HeadingCache, SectionCache, TFile } from "obsidian";
-import { Api } from "utils/obs/api";
 
 /**
  * Contains auxiliary information collected during the parsing process.
@@ -51,6 +51,12 @@ interface DeclarationInfoBase {
 	/** The location of the declaration within the {@link section}. */
 	location: OffsetRange;
 }
+
+/** Only these will be passed to parsers. */
+const SUPPORTED_SECTIONS: ReadonlySet<string> = new Set([
+	SectionType.Table,
+	SectionType.ThematicBreak,
+]);
 
 export class DeclarationParser extends FileParser {
 
@@ -98,7 +104,7 @@ export class DeclarationParser extends FileParser {
 			for (const section of cache.sections) {
 				if (this.isCodeSection(section)) {
 					if (fileContent) {
-						const info = DeclarationParser.parseCodeBlock(this.extractContentFromSection(section, fileContent));
+						const info = DeclarationParser.parseCodeBlock(This.content.fromSection(section, fileContent));
 						if (info !== null && DeclarationConstants.CodeBlock.isSupportedLanguage(info.language))
 							return true;
 					}
@@ -246,7 +252,7 @@ export class DeclarationParser extends FileParser {
 				parseInfo?.incompleteDeclarationInfos.push({
 					noteID: noteID,
 					declaration: incomplete,
-					section: DeclarationParser.createFrontmatterSectionWithKey(key),
+					section: This.create.frontmatterSectionWithKey(key),
 					location: location,
 				});
 			});
@@ -267,7 +273,7 @@ export class DeclarationParser extends FileParser {
 		if (!this.isCodeSection(section))
 			return null;
 
-		const source = FileParser.extractContentFromSection(section, fileContent);
+		const source = This.content.fromSection(section, fileContent);
 
 		return DeclarationParser.createExplicitDeclaration(
 			source,
@@ -296,12 +302,12 @@ export class DeclarationParser extends FileParser {
 		* @param parseInfo
 		* @returns An array of all auto generated {@link CardDeclarationAssistant|declarations} along with their {@link SectionRange|range}.
 		*/
-	protected static getAutoDeclarationsFromSection(section: SectionCache, cache: CachedMetadata, noteID: NoteID, fileContent: string, parseInfo?: PostParseInfo) {
+	protected static getAutoDeclarationsFromSection(section: SectionCache, cache: CachedMetadata, noteID: NoteID, fileContent: string, parseInfo?: PostParseInfo, contentParserOptions?: CommandDeclarationParserOptions) {
 
-		if (!this.isCodeSection(section))
+		if (!This.isCodeSection(section))
 			return [];
 
-		const source = fileContent.slice(section.position.start.offset, section.position.end.offset);
+		const source = This.content.fromSection(section, fileContent);
 
 		const parser = DeclarationParser.createCommandDeclarationParser(
 			source,
@@ -324,7 +330,14 @@ export class DeclarationParser extends FileParser {
 
 		if (parser !== null) {
 			this.headingRangeForSection(section, cache, (commandDeclarationSection, inBetweenDelimiter, _sectionNumber, index, delimiters) => {
-				parser.parse(commandDeclarationSection.level, inBetweenDelimiter, index, delimiters);
+				parser.parse({
+					sectionLevel: commandDeclarationSection.level,
+					inBetweenDelimiter: inBetweenDelimiter,
+					index: index,
+					delimiters: delimiters,
+					content: fileContent,
+					options: contentParserOptions,
+				});
 			});
 		}
 
@@ -346,7 +359,7 @@ export class DeclarationParser extends FileParser {
 
 		const relevantSections = [
 			...cache.headings ?? [],
-			...cache.sections?.filter(p => p.type === this.SECTION_TYPE_THEMATICBREAK) ?? []
+			...cache.sections?.filter(p => SUPPORTED_SECTIONS.has(p.type)) ?? []
 		];
 
 		return this.rangeForSection(
@@ -527,7 +540,7 @@ export class DeclarationParser extends FileParser {
 	private static findSectionCacheForHeading(headingCache: HeadingCache, cache: CachedMetadata): SectionCache | null {
 		return cache.sections?.find(
 			(section) =>
-				section.type === this.SECTION_TYPE_HEADING &&
+				section.type === SectionType.Heading &&
 				section.position.start.line === headingCache.position.start.line &&
 				section.position.start.col === headingCache.position.start.col &&
 				section.position.end.line === headingCache.position.end.line &&
@@ -537,8 +550,10 @@ export class DeclarationParser extends FileParser {
 
 	private static createSectionCacheFromHeading(headingCache: HeadingCache) {
 		return {
-			type: this.SECTION_TYPE_HEADING,
+			type: SectionType.Heading,
 			position: headingCache.position,
 		} satisfies SectionCache;
 	}
 }
+
+const This = DeclarationParser;

@@ -1,12 +1,13 @@
-import { CardIDDataTuple, DataStore, StatisticsData } from "data/DataStore";
-import { FullID } from "data/FullID";
-import { Env } from "env";
-import { Fsrs } from "scheduling/Fsrs";
-import { FsrsConvert } from "scheduling/FsrsConvert";
-import { ReviewItemInfo } from "scheduling/ReviewItemInfo";
-import { FsrsSchedulerConfig, NextItem, NextReviewItemOptions, Rating, ReviewItem } from "scheduling/types";
+import { CardIDDataTuple, DataStore } from "#/data/DataStore";
+import { FullID } from "#/data/FullID";
+import { StatisticsData } from "#/data/types";
+import { Env } from "#/env";
+import { Fsrs } from "#/scheduling/Fsrs";
+import { FsrsConvert } from "#/scheduling/FsrsConvert";
+import { ReviewItemInfo } from "#/scheduling/ReviewItemInfo";
+import { FsrsSchedulerConfig, NextItem, NextReviewItemOptions, Rating, ReviewItem } from "#/scheduling/types";
+import { KeyValue } from "#/utils/ts";
 import { Card, State, TypeConvert } from "ts-fsrs";
-import { KeyValue } from "utils/ts";
 
 interface DataItem {
 	id: FullID;

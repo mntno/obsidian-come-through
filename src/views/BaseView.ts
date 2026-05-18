@@ -2,16 +2,18 @@ import { CssClass } from "#/constants";
 import { DataStore, DataStoreRoot } from "#/data/DataStore";
 import { Env } from "#/env";
 import { ContentRenderer, createRenderConfig } from "#/renderings/content/ContentRenderer";
-import { PluginSettings, SettingsChanged, SettingsManager } from "#/Settings";
+import { SettingsChanged } from "#/settings/SettingsManager";
+import { PluginSettings } from "#/settings/types";
 import { OmitIndexSignature } from "#/types";
 import { Icon } from "#/ui/constants";
-import { Doc, El } from "#/utils/dom/dom";
 import { ElementCreator } from "#/utils/ElementCreator";
 import { Api } from "#/utils/obs/api";
+import { Doc, El } from "#/utils/obs/dom";
 import { InteractionAssistant } from "#/utils/obs/InteractionAssistant";
 import { ViewAssistant } from "#/utils/obs/ViewAssistant";
 import { Bln, Obj } from "#/utils/ts";
 import { MouseKeyboardEvent } from "#/utils/types";
+import { ViewContext } from "#/views/types";
 import { App, IconName, ItemView, Menu, Scope, ViewStateResult, WorkspaceLeaf } from "obsidian";
 
 export interface BaseViewState {
@@ -33,9 +35,14 @@ const NEW_STATE: OmitIndexSignature<BaseViewState> = {
 } as const;
 
 export type BaseViewOptionalParameters = {
-	readonly data?: DataStore;
+	readonly data?: DataOptions;
 	readonly paneMenu?: PaneMenuOptions;
 	readonly scope?: ScopeOptions;
+};
+
+export type DataOptions = {
+	readonly subscribeToChanges: boolean;
+	readonly data: DataStore;
 };
 
 export interface PaneMenuOptions {
@@ -48,10 +55,10 @@ export interface ScopeOptions {
 	register?: (app: App, scope: Scope) => void;
 }
 
-export interface BaseViewScrollToOptions extends ScrollToOptions { // eslint-disable-line @typescript-eslint/no-empty-object-type
+export interface BaseViewScrollToOptions extends ScrollToOptions { // eslint-disable-line @typescript-eslint/no-empty-object-type -- Intentionally left empty to document a distinct abstraction and facilitate future extension.
 }
 
-export abstract class BaseView<State extends BaseViewState> extends ItemView {
+export abstract class BaseView<State extends BaseViewState, Context extends ViewContext = ViewContext> extends ItemView {
 
 	protected static withDefaultViewState<T extends BaseViewState>(state: T): T {
 		return {
@@ -60,7 +67,7 @@ export abstract class BaseView<State extends BaseViewState> extends ItemView {
 		};
 	}
 
-	protected readonly settingsManager: SettingsManager;
+	protected readonly ctx: Context;
 	protected readonly contentRenderer: ContentRenderer;
 	protected readonly interactionAssistant: InteractionAssistant;
 
@@ -68,16 +75,16 @@ export abstract class BaseView<State extends BaseViewState> extends ItemView {
 	private readonly viewAssistant: ViewAssistant;
 	private domFacade: BaseViewDomFacade | null = null;
 
-	public constructor(leaf: WorkspaceLeaf, settingsManager: SettingsManager, options?: BaseViewOptionalParameters) {
+	public constructor(leaf: WorkspaceLeaf, ctx: Context, options?: BaseViewOptionalParameters) {
 		Env.log.d("BaseView:constructor");
 		super(leaf);
 
-		this.settingsManager = settingsManager;
+		this.ctx = ctx;
 		this.options = options;
 
 		this.viewAssistant = new ViewAssistant();
 		this.interactionAssistant = new InteractionAssistant(this.app, this, this.viewAssistant);
-		this.contentRenderer = new ContentRenderer(this.app, createRenderConfig(settingsManager.settings));
+		this.contentRenderer = new ContentRenderer(this.app, createRenderConfig(), ctx.processorConfig);
 		this.addChild(this.contentRenderer);
 
 		this.navigation = true; // Default to true, subclasses can override
@@ -114,10 +121,9 @@ export abstract class BaseView<State extends BaseViewState> extends ItemView {
 		Env.log.d("BaseView:onOpen");
 		await super.onOpen();
 
-		this.settingsManager.registerOnChangedCallback(this.settingsChangedCallback);
-		if (this.options) {
-			this.options.data?.registerOnChangedCallback(this.dataChangedCallback);
-		}
+		this.ctx.settingsManager.registerOnChangedCallback(this.settingsChangedCallback);
+		if (Bln.isTrue(this.options?.data?.subscribeToChanges))
+			this.options.data.data.registerOnChangedCallback(this.dataChangedCallback);
 
 		this.contentEl.empty();
 		this.viewAssistant.init(this);
@@ -130,10 +136,9 @@ export abstract class BaseView<State extends BaseViewState> extends ItemView {
 		Env.log.d("BaseView:onClose");
 		await super.onClose();
 
-		this.settingsManager.unregisterOnChangedCallback(this.settingsChangedCallback);
-		if (this.options) {
-			this.options.data?.unregisterOnChangedCallback(this.dataChangedCallback);
-		}
+		this.ctx.settingsManager.unregisterOnChangedCallback(this.settingsChangedCallback);
+		if (Bln.isTrue(this.options?.data?.subscribeToChanges))
+			this.options.data.data.unregisterOnChangedCallback(this.dataChangedCallback);
 
 		this.contentRenderer.unload(); // Will also be unloaded when this view unloads.
 		this.domFacade = null;
@@ -243,7 +248,7 @@ export abstract class BaseView<State extends BaseViewState> extends ItemView {
 	private settingsChangedCallback: SettingsChanged = async (settings, isExternal) => {
 		Env.log.d("BaseView:settingsChangedCallback");
 		if (!isExternal)
-			this.contentRenderer.config = createRenderConfig(settings);
+			this.contentRenderer.config = createRenderConfig();
 
 		const outParams = {
 			skipRender: false,
@@ -318,8 +323,8 @@ export abstract class BaseView<State extends BaseViewState> extends ItemView {
 	protected onGetEphemeralState(): Record<string, unknown> { return {}; };
 	protected abstract onRender(): Promise<void>;
 
-	protected onDataChanged(data: DataStoreRoot, out: { skipRender: boolean }): void { }; // eslint-disable-line @typescript-eslint/no-unused-vars
-	protected onSettingsChanged(settings: PluginSettings, isExternal: boolean, out: { skipRender: boolean }): void { }; // eslint-disable-line @typescript-eslint/no-unused-vars
+	protected onDataChanged(_data: DataStoreRoot, _out: { skipRender: boolean }): void { };
+	protected onSettingsChanged(_settings: PluginSettings, _isExternal: boolean, _out: { skipRender: boolean }): void { };
 
 	protected get scrollPosition(): { top: number, left: number } {
 		return {

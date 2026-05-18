@@ -3,6 +3,7 @@ import { Commands } from "#/declarations/CommandNames";
 import { ExplicitDeclarationAssistant } from "#/declarations/ExplicitDeclaration";
 import { AlternateHeadingsRenderer } from "#/renderings/declarations/AlternateHeadingsRenderer";
 import { DeclarationRenderable, DeclarationRenderer, FactoryRegistryEntry } from "#/renderings/declarations/DeclarationRenderable";
+import { DefaultDeclarationRenderer } from "#/renderings/declarations/DefaultDeclarationRenderer";
 import { HeadingAndDelimiterRenderer } from "#/renderings/declarations/HeadingAndDelimiterRenderer";
 import { HeadingIsFrontRenderer } from "#/renderings/declarations/HeadingIsFrontRenderer";
 import { PageDeclarationRenderer } from "#/renderings/declarations/PageDeclarationRenderer";
@@ -22,6 +23,9 @@ export const RendererRegistry = {
 		if (CommandableAssistant.is(declaration)) {
 			const entry = COMMAND_RENDERERS.find(r => r.names.includes(declaration.name));
 			r = entry ? entry.create(declaration) : null
+
+			if (r === null && Commands.Name.exists(declaration.name))
+				r = new DefaultDeclarationRenderer(declaration);
 		}
 		else if (ExplicitDeclarationAssistant.MaybePage.is(declaration)) {
 			r = new PageDeclarationRenderer(declaration);

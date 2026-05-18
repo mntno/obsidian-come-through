@@ -1,6 +1,6 @@
-import { StatisticsData } from "data/DataStore";
-import { FullID } from "data/FullID";
-import { Rating as FsrsRating } from 'ts-fsrs';
+import { FullID } from "#/data/FullID";
+import { StatisticsData } from "#/data/types";
+import { Rating as FsrsRating } from "ts-fsrs";
 
 export enum Rating {
 	Again = FsrsRating.Again,
@@ -18,7 +18,11 @@ export interface NextItem {
 	},
 };
 
-export type ReviewSortOrder = "due" | "retrievability";
+export const Scheduling = {
+	reviewSortOrder: ["due", "retrievability"] as const,
+};
+
+export type ReviewSortOrder = (typeof Scheduling.reviewSortOrder)[number];
 
 export type FsrsSchedulerConfig = {
 	enableFuzz: boolean;

@@ -1,13 +1,13 @@
 import { CssClass } from "#/constants";
-import { DataStore } from "#/data/DataStore";
+import { DataProvider } from "#/data/DataProvider";
 import { Env } from "#/env";
 import { t } from "#/Localization";
 import { ReviewItemInfoModal } from "#/modals/ReviewItemInfoModal";
-import { HeadingProcessor } from "#/renderings/content/HeadingProcessor";
+import { HeadingProcessor } from "#/renderings/content/processors/HeadingProcessor";
 import { ReviewItemInfo } from "#/scheduling/ReviewItemInfo";
 import { Scheduler } from "#/scheduling/Scheduler";
 import { NextReviewItemOptions, Rating, ReviewSortOrder } from "#/scheduling/types";
-import { SettingsManager } from "#/Settings";
+import { PluginSettings } from "#/settings/types";
 import { OmitIndexSignature, UnsignedInteger } from "#/types";
 import { Icon } from "#/ui/constants";
 import { UIAssistant } from "#/ui/UIAssistant";
@@ -22,6 +22,7 @@ import { ContentUnit } from "#/views/review/ContentUnit";
 import { createMetadataEl, createRatingButtons } from "#/views/review/elements";
 import { ItemReviewProviderError, ReviewItemProvider, ReviewProviderConfig, ReviewProviderError, ReviewProviderErrors, ReviewProviderFactory } from "#/views/review/providers";
 import { ReviewState } from "#/views/review/types";
+import { ContentParserViewContext, DataWriterViewContext } from "#/views/types";
 import { IconName, Keymap, KeymapEventListener, Menu, PaneType, setIcon, setTooltip, TFile, ViewStateResult, WorkspaceLeaf } from "obsidian";
 
 declare global {
@@ -54,7 +55,11 @@ const DEFAULT_ESTATE: OmitIndexSignature<ReviewViewEphemeralState> = {
 	backScrollPosition: 0
 } as const;
 
-export class ReviewView extends BaseView<ReviewViewState> {
+export type ReviewViewContext = ContentParserViewContext & DataWriterViewContext & {
+	scheduler: Scheduler;
+};
+
+export class ReviewView extends BaseView<ReviewViewState, ReviewViewContext> {
 
 	public static readonly TYPE = "come-through-view-review";
 	public static createViewState(config: ReviewProviderConfig | null): ReviewViewState {
@@ -65,9 +70,7 @@ export class ReviewView extends BaseView<ReviewViewState> {
 		} satisfies OmitIndexSignature<ReviewViewState>);
 	}
 
-	private readonly data: DataStore;
 	private readonly ui: UIAssistant;
-	private readonly scheduler: Scheduler;
 	private readonly pager: ContentUnit;
 
 	private state: ReviewViewState = { ...DEFAULT_STATE };
@@ -91,13 +94,14 @@ export class ReviewView extends BaseView<ReviewViewState> {
 
 	public constructor(
 		leaf: WorkspaceLeaf,
-		settingsManager: SettingsManager,
-		scheduler: Scheduler,
-		ui: UIAssistant,
-		data: DataStore) {
+		ctx: ReviewViewContext,
+		ui: UIAssistant) {
 		Env.log.d("ReviewView:constructor");
-		super(leaf, settingsManager, {
-			data: data,
+		super(leaf, ctx, {
+			data: {
+				subscribeToChanges: true,
+				data: ctx.data,
+			},
 			paneMenu: {
 				addReloadItem: () => {
 					this.removeAllPages(true); // Currently first page is loaded if the pager has no `currentIndex`.
@@ -129,10 +133,7 @@ export class ReviewView extends BaseView<ReviewViewState> {
 			},
 		});
 
-		this.scheduler = scheduler;
 		this.ui = ui;
-		this.data = data;
-
 		this.pager = new ContentUnit(2);
 	}
 
@@ -170,7 +171,7 @@ export class ReviewView extends BaseView<ReviewViewState> {
 			rate: this.pager.isAtLastIndex ? async (rating: Rating) => await this.rate(rating) : null,
 
 			reviewState: reviewState,
-			reviewItemInfo: () => this.scheduler.getItemInfo(reviewState.reviewedItem),
+			reviewItemInfo: () => this.ctx.scheduler.getItemInfo(reviewState.reviewedItem),
 
 			sortOrder: this.state.sortOrder,
 
@@ -251,9 +252,9 @@ export class ReviewView extends BaseView<ReviewViewState> {
 			this.state = { ...DEFAULT_STATE, ...state, ...overrides };
 			this.provider = ReviewProviderFactory.create(this.state.providerConfig, {
 				app: this.app,
-				data: this.data,
-				scheduler: this.scheduler,
-				settings: this.settingsManager.settings
+				data: new DataProvider(this.ctx.data),
+				scheduler: this.ctx.scheduler,
+				contentParserConfig: this.ctx.contentParserConfig
 			});
 		};
 
@@ -297,6 +298,10 @@ export class ReviewView extends BaseView<ReviewViewState> {
 		return this.eState;
 	}
 
+	protected override onSettingsChanged(_settings: PluginSettings, _isExternal: boolean, _out: { skipRender: boolean }): void {
+		this.removeAllPages(true);
+	}
+
 	protected override async onRender(): Promise<void> {
 		Env.log.d("ReviewView:onRender", this.state);
 		this.ratingButtonsContainer?.remove();
@@ -315,7 +320,7 @@ export class ReviewView extends BaseView<ReviewViewState> {
 
 		// Create review content
 
-		const processors = [new HeadingProcessor(this.settingsManager.settings.hideCardSectionMarker ? 2 : 1)];
+		const processors = [new HeadingProcessor(this.ctx.processorConfig.heading())];
 		this.contentRenderer.addCustomProcessors(processors);
 
 		const frontIndex = Num.UInt.create(0);
@@ -350,8 +355,8 @@ export class ReviewView extends BaseView<ReviewViewState> {
 
 		// Create additional UI components.
 
-		const nextItems = this.scheduler.previewNextItem(reviewState.reviewedItem.statistics, reviewState.date).map(nextItem => ({
-			info: this.scheduler.getItemInfo({ id: reviewState.reviewedItem.id, statistics: nextItem.stat }),
+		const nextItems = this.ctx.scheduler.previewNextItem(reviewState.reviewedItem.statistics, reviewState.date).map(nextItem => ({
+			info: this.ctx.scheduler.getItemInfo({ id: reviewState.reviewedItem.id, statistics: nextItem.stat }),
 			item: nextItem,
 		}));
 		const ratingButtonsContainer = createRatingButtons(nextItems, reviewState, this.state.sortOrder, (button: HTMLButtonElement, rating: Rating) => {
@@ -360,7 +365,7 @@ export class ReviewView extends BaseView<ReviewViewState> {
 		this.ratingButtonsContainer = this.dom.contentEl.appendChild(ratingButtonsContainer);
 
 		if (this.state.showMetadata && !this.pager.isAtLastIndex) {
-			const info = this.scheduler.getItemInfo(reviewState.reviewedItem);
+			const info = this.ctx.scheduler.getItemInfo(reviewState.reviewedItem);
 			createMetadataEl(reviewState, this.state.sortOrder, info, this.dom.create, (button) => {
 				this.contentRenderer.registerDomEvent(button, "click", () => new ReviewItemInfoModal(this.app, reviewState, this.state.sortOrder, info).open());
 			});
@@ -401,8 +406,8 @@ export class ReviewView extends BaseView<ReviewViewState> {
 			// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- As of now there's just one `error.type`.
 			if (error instanceof FileParserError && error.type === "file cache unavailable") {
 				this.dom.create.p(`Cannot display card because "${error.file.path}" is not indexed.`);
-				this.dom.create.div({ wrapperClasses: ["flex justify-center"] , o: { cls: ["flex gap-4"]} }, (el) => {
-					El.create(el, "button", { text: "Reload views" }, (el) => {
+				this.dom.create.div({ wrapperClasses: ["flex justify-center"], o: { cls: ["flex gap-4"] } }, (el) => {
+					El.create(el, "button", { text: "Reload view" }, (el) => {
 						this.registerDomEvent(el, "click", (evt) => this.reload(evt))
 					});
 					El.create(el, "button", { text: "Reload Obsidian" }, (el) => {
@@ -514,8 +519,8 @@ export class ReviewView extends BaseView<ReviewViewState> {
 		this.removeAllPages(true);
 
 		// Use now as scheduling date rather than the date of rendering to avoid items being scheduled as due in the past, e.g., when next interval is 1 min.
-		this.scheduler.rateItem(item.id, rating);
-		await this.data.save(); // This will trigger a refresh via the registered change callback.
+		this.ctx.scheduler.rateItem(item.id, rating);
+		await this.ctx.data.save(); // This will trigger a refresh via the registered change callback.
 
 		this.ui.notify.info(`You rated ${ReviewItemInfo.Convert.ratingAsString(rating)}`, { prefix: false });
 	}

@@ -1,4 +1,5 @@
 import { CardID, DeckID, DeckableFullID, FullID, NoteID } from "#/data/FullID";
+import { IsoDateString, StatisticsData, CardData } from "#/data/types";
 import { UniqueID } from "#/data/UniqueID";
 import { Env } from "#/env";
 import { asNoteID, isDate, isString } from "#/TypeAssistant";
@@ -30,10 +31,6 @@ interface NoteData {
 }
 
 type RemovedData = Record<NoteID, RemovedNoteData>;
-/** Serves as a reminder that dates are read and stored as ISO strings. */
-type IsoDateString = string;
-/** Make sure dates are never of `undefined` type. */
-type OptionalIsoDateString = IsoDateString | null;
 
 interface RemovedCardData extends CardData {
 	/** Date marked for removal. */
@@ -46,21 +43,8 @@ interface RemovedNoteData {
 /** Shallow type validation. */
 const isRemovedNoteData = (value: unknown): value is RemovedNoteData => Obj.is(value) && "cs" in value;
 
-type LogID = string;
 type CardsData = Record<CardID, CardData>;
 
-export interface CardData {
-	s: StatisticsData;
-	/** The decks the card belongs to. */
-	d: DeckID[];
-	/** The review log id. */
-	l: LogID[];
-	/**
-		* Created date.
-		* @since 0.6.0 Make sure to call {@link validateCardData} before use.
-		*/
-	c: OptionalIsoDateString,
-}
 /** Shallow type validation. */
 const isCardData = (value: unknown): value is CardData => Obj.is(value) && "s" in value && "d" in value;
 /** Checks for undefined values, which can happen if values weren't deserialized. */
@@ -68,62 +52,6 @@ const validateCardData = (value: CardData) => {
 	if (!Str.is(value.c))
 		value.c = null;
 };
-
-export interface StatisticsData {
-	/** Due date. ISO 8601. */
-	due: IsoDateString;
-	/** stability */
-	s: number;
-	/** difficulty */
-	d: number;
-	/**
-		* `scheduled_days`
-		*
-		* The {@link due | due date} minus {@link lr | last review date} in days.
-		*/
-	sd: number;
-
-	/**
-		* `learning_steps`
-		*/
-	ls: number;
-
-	/**
-		* `reps`
-		*/
-	r: number;
-
-	/**
-		* `lapses`
-		*
-		* Incremented by one if, and only if, rated *Again*, which tells the algorithm that the review failed, forcing the card back into the (re)learning phase.
-		*
-		* - The `lapses` counter is incremented by exactly one every time a card is rated *Again*. The only exceptions are administrative functions:
-		* 	- `rollback()` can decrease the count if an 'Again' rating is undone.
-		* 	- `forget()` can reset the count to zero.
-		*/
-	l: number;
-
-	/**
-		* `state`
-		*
-		* - **New**: The card has been created but has not been studied yet.
-		* - **Learning**: The card is being learned for the first time. It will typically be shown in short intervals.
-		* - **Review**: The card has been successfully learned and is now in the long-term review cycle to maintain memory retention.
-		* - **Relearning**: The card was previously in the 'Review' state but was forgotten (rated 'Again'). It must be learned again before returning to the long-term review cycle.
-		*/
-	st: number;
-
-	/**
-		* `last_review`
-		*
-		* The date of the last rating, or `null` if never rated.
-		*
-		* - ISO 8601 format.
-		* - Note that if statistics is set to `forget`, state resets to New but `last_review` is not changed.
-		*/
-	lr: OptionalIsoDateString;
-}
 
 export type CardPredicate = (id: FullID, data: CardData) => boolean;
 
@@ -286,7 +214,7 @@ export class DataStore {
 
 	public getDeck(id: DeckID, throwIfNotFound = false): DeckData | null {
 		Env.log.data("DataStore:getDeck: id", id);
-		const data = Null.fromUndefined(this.data.decks[id]);
+		const data = Null.fromNullish(this.data.decks[id]);
 		if (data === null && throwIfNotFound)
 			throw new Error(`Deck with ID "${id}" was not found.`);
 		return data;
@@ -400,8 +328,8 @@ export class DataStore {
 
 		// First check if already active in any note.
 		// - Prevents dublicates, e.g., it the removal event occurs after the add event.
-		const existingActive = Arr.firstOrNull(this.getAllCards((cardID, _) => id.hasCardID(cardID)));
-		if (existingActive !== null) {
+		const existingActive = Arr.first(this.getAllCards((cardID, _) => id.hasCardID(cardID)));
+		if (existingActive !== undefined) {
 			if (existingActive.id.hasNoteID(id.noteID)) {
 				if (throwIfExists)
 					throw new CardAlreadyExistsError(id, [existingActive.id]);
@@ -411,14 +339,14 @@ export class DataStore {
 		}
 
 		// Check removed
-		const removed = Arr.firstOrNull(this.getAllRemovedCards(undefined,
+		const removed = Arr.first(this.getAllRemovedCards(undefined,
 			(cardID, _) => id.hasCardID(cardID) // For unique IDs. They can be in different notes. Just match on the hash.
 		));
 
 		this.createActiveNote(id, false);
 		let cardToAdd: CardIDDataTuple;
 
-		if (removed !== null) {
+		if (removed !== undefined) {
 			this.deleteRemovedCard(removed.id, true);
 			cardToAdd = StatisticsHelper.toCardIDDataTuple(id, StatisticsHelper.removedCardToCard(removed.data));
 		}
@@ -1007,7 +935,13 @@ export class DataStore {
 		}
 	};
 
+	/** Grouped read-only access to items. */
 	public readonly item = {
+
+		all: (options?: {
+			noteFilter?: (noteID: NoteID, data: NoteData) => boolean,
+			cardFilter?: (cardID: CardID, data: CardData) => boolean
+		}) => this.getAllCardsWithFilters(options?.noteFilter, options?.cardFilter),
 
 		allInCollection: (id: DeckID | ReadonlyArray<DeckID>) => this.getAllCardsForDeck(id),
 
@@ -1022,9 +956,12 @@ export class DataStore {
 		},
 	};
 
+	/** Grouped read-only access to collections. */
 	public readonly collection = {
 
 		all: (options?: GetDecksOptions) => this.getAllDecks(options),
+
+		fromID: (id: DeckID) => this.getDeck(id),
 
 		/**
 		 * @param items Optional list of items to filter. If not provided, all items will be used.
@@ -1053,6 +990,13 @@ export class DataStore {
 			return invalid;
 		},
 	};
+
+	/** Grouped read-only access to notes. */
+	public readonly note = {
+		all: (noteFilter?: (noteID: NoteID, data: NoteData) => boolean): NoteID[] =>
+			this.getAllNotes(noteFilter),
+	};
+
 
 	public readonly filter = {
 		cardsWithoutDeck: (card: CardIDDataTuple) => DataStore.Predicate.cardsInDeck(undefined)(card.id, card.data),

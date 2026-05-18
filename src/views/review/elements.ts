@@ -1,13 +1,12 @@
-import { Env } from "env";
+import { Env } from "#/env";
+import { ReviewItemInfo } from "#/scheduling/ReviewItemInfo";
+import { NextItem, Rating, ReviewSortOrder } from "#/scheduling/types";
+import { DateTime } from "#/utils/datetime";
+import { TableRowCreator, TableSectionCreator } from "#/utils/dom/table";
+import { ElementCreator } from "#/utils/ElementCreator";
+import { KeyValue } from "#/utils/ts";
+import { ReviewState } from "#/views/review/types";
 import { setTooltip } from "obsidian";
-import { NextItem, Rating } from "scheduling/types";
-import { ReviewItemInfo } from "scheduling/ReviewItemInfo";
-import { ReviewSortOrder } from "scheduling/types";
-import { DateTime } from "utils/datetime";
-import { TableRowCreator, TableSectionCreator } from "utils/dom/table";
-import { ElementCreator } from "utils/ElementCreator";
-import { KeyValue } from "utils/ts";
-import { ReviewState } from "views/review/types";
 
 export function createRatingButtons(nextItemsWithInfo: { item: NextItem, info: ReviewItemInfo }[], reviewState: ReviewState, _sortOrder: ReviewSortOrder, cb: (button: HTMLButtonElement, rating: Rating) => void) {
 	Env.log.d("createRatingButtons");

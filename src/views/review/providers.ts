@@ -1,12 +1,13 @@
 import { ContentParser, MaybeParsedCard } from "#/ContentParser";
-import { CardIDDataTuple, DataStore, DeckData } from "#/data/DataStore";
+import { DataProvider } from "#/data/DataProvider";
+import { CardIDDataTuple, DeckData } from "#/data/DataStore";
 import { DeckID, FullID } from "#/data/FullID";
 import { Env } from "#/env";
 import { Scheduler } from "#/scheduling/Scheduler";
 import { NextReviewItemOptions, ReviewItem } from "#/scheduling/types";
-import { PluginSettings } from "#/Settings";
-import { Arr, St, Str } from "#/utils/ts";
+import { Arr, Nullish, St, Str } from "#/utils/ts";
 import { ReviewState } from "#/views/review/types";
+import { ContentParserConfigProvider } from "#/views/types";
 import { App } from "obsidian";
 
 /**
@@ -45,9 +46,9 @@ export class ReviewProviderFactory {
 
 type ReviewProviderContext = {
 	app: App;
-	data: DataStore;
+	data: DataProvider;
 	scheduler: Scheduler;
-	settings: PluginSettings;
+	contentParserConfig: ContentParserConfigProvider;
 }
 
 export type ReviewProviderErrors = AllCardsReviewProviderError | ItemReviewProviderError | DeckReviewProviderError | FileReviewProviderError;
@@ -123,7 +124,7 @@ abstract class BaseReviewProvider {
 	protected abstract createError(info: ReviewProviderErrorInfo): ReviewProviderError;
 
 	protected async createReviewState(cards: CardIDDataTuple[], date: Date, options: NextReviewItemOptions): Promise<ReviewState | ReviewProviderError> {
-
+		Env.log.data("BaseReviewProvider:createReviewState: number of items", cards.length);
 		if (cards.length === 0)
 			return this.createError({ code: "no-data-items" });
 
@@ -135,12 +136,11 @@ abstract class BaseReviewProvider {
 		if (Str.nonEmpty(reviewedItem.id.cardID) === undefined)
 			return this.createError({ code: "unexpected", message: "Card expected" });
 
-		const contentResult = await ContentParser.getCard(reviewedItem.id, this.ctx.app, {
-			contentRead: {
-				hideCardSectionMarker: this.ctx.settings.hideCardSectionMarker
-			},
-			likelyNoteIDs: this.ctx.data.getAllNotes() // Only notes that contain declarations
-		});
+		const contentResult = await ContentParser.getCard(
+			reviewedItem.id,
+			this.ctx.app,
+			this.ctx.contentParserConfig.getCardParseOptions(this.ctx.data.note.all())
+		);
 
 		if (contentResult.complete === null) {
 			if (contentResult.incomplete !== null)
@@ -171,7 +171,7 @@ class AllCardsReviewProvider extends BaseReviewProvider implements ReviewItemPro
 	}
 
 	public async getNextItem(date: Date, options: NextReviewItemOptions): Promise<ReviewState | ReviewProviderError> {
-		return this.createReviewState(this.ctx.data.getAllCards(), date, options);
+		return this.createReviewState(this.ctx.data.item.all(), date, options);
 	}
 
 	public getDisplayText(): string {
@@ -223,7 +223,8 @@ class CollectionReviewProvider extends BaseReviewProvider implements ReviewItemP
 	protected createError(info: ReviewProviderErrorInfo): ReviewProviderError {
 		const map: Record<DeckID, DeckData> = {};
 		for (const id of this.collectionIDs()) {
-			const data = this.ctx.data.getDeck(id);
+			const data = this.ctx.data.collection.fromID(id);
+			Env.assert(data !== null, "Expected collection with ID:", id);
 			if (data !== null)
 				map[id] = data;
 		}
@@ -240,7 +241,7 @@ class CollectionReviewProvider extends BaseReviewProvider implements ReviewItemP
 			case 0:
 				return "Review";
 			case 1:
-				return `Review ${this.ctx.data.getDeck(Arr.firstOrThrow(this.id), true)!.n}`;
+				return `Review ${Nullish.ifNot(this.ctx.data.collection.fromID(Arr.firstOrThrow(this.id)), (collection) => collection.n, () => Str.EMPTY)}`;
 			default:
 				return `Review ${this.id.length} decks`;
 		}
@@ -262,6 +263,7 @@ class FileReviewProvider extends BaseReviewProvider implements ReviewItemProvide
 	private readonly paths: string[];
 
 	public constructor(paths: string | string[], ctx: ReviewProviderContext) {
+		Env.log.data("FileReviewProvider:constructor: ", paths);
 		super(ctx);
 		this.paths = Arr.from(paths);
 	}
@@ -271,8 +273,10 @@ class FileReviewProvider extends BaseReviewProvider implements ReviewItemProvide
 	}
 
 	public async getNextItem(date: Date, options: NextReviewItemOptions): Promise<ReviewState | ReviewProviderError> {
-		const cards = this.ctx.data.getAllCards().filter(c => this.paths.some(p => c.id.hasNoteID(p)));
-		return this.createReviewState(cards, date, options);
+		return this.createReviewState(
+			this.ctx.data.item.all({ noteFilter: (noteID) => this.paths.includes(noteID) }),
+			date,
+			options);
 	}
 
 	public getDisplayText(): string {

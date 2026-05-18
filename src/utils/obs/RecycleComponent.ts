@@ -1,4 +1,4 @@
-import { Env } from "env";
+import { Env } from "#/env";
 import { Component } from "obsidian";
 
 export abstract class RecycleComponent extends Component {
@@ -30,7 +30,7 @@ export abstract class RecycleComponent extends Component {
 		* The {@link recycleComponent} was loaded.
 		* Create and add children here.
 		*/
-	protected onRecycled(component: Component): void { }; // eslint-disable-line @typescript-eslint/no-unused-vars
+	protected onRecycled(_component: Component): void { };
 
 	/** The {@link recycleComponent} is about to unload. */
 	protected onRecycling(): void { };

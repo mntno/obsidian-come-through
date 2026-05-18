@@ -1,6 +1,6 @@
-import { Env } from "env";
-import { UnsignedInteger } from "types";
-import { Num } from "utils/ts";
+import { Env } from "#/env";
+import { UnsignedInteger } from "#/types";
+import { Num } from "#/utils/ts";
 
 export class ContentUnit {
 	private pages: (HTMLDivElement | undefined)[];

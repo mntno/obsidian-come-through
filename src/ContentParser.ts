@@ -1,11 +1,16 @@
+import { StringManipulator } from "#/content/str";
+import { ContentRange } from "#/content/types";
 import { CardID, FullID, NoteID } from "#/data/FullID";
+import { ContentSectionProvider } from "#/declarations/CommandDeclarationParser";
 import { DeclarationConstants } from "#/declarations/constants";
 import { DeclarationParser } from "#/declarations/DeclarationParser";
 import { IDScope } from "#/declarations/ExplicitDeclaration";
+import { Env } from "#/env";
 import { asNoteID, fullIDFromDeclaration } from "#/TypeAssistant";
 import { UnexpectedUndefinedError } from "#/utils/errors";
 import { Api } from "#/utils/obs/api";
-import { FullSectionRange, SectionRange } from "#/utils/obs/FileParser";
+import { FullSectionRange, SectionRange, SectionType } from "#/utils/obs/FileParser";
+import { Arr, Str } from "#/utils/ts";
 import { App, CachedMetadata, HeadingCache, SectionCache, TFile } from "obsidian";
 
 /**
@@ -43,7 +48,10 @@ export type MaybeParsedCard = {
 
 export interface ParseOptions {
 	contentRead?: ContentReadOptions;
-	likelyNoteIDs?: NoteID[];
+}
+
+export interface GetCardParseOptions extends ParseOptions {
+	likelyNoteIDs: NoteID[] | null;
 }
 
 /**
@@ -76,7 +84,9 @@ interface ContentInfo {
 	*/
 	section: SectionCache;
 
-	range: SectionRange;
+	containerRange: SectionRange;
+
+	provider?: ContentSectionProvider;
 }
 
 interface PopulationPredicate {
@@ -96,11 +106,6 @@ interface PopulationPredicate {
 
 type IdentifiedContentInfoFilter = (id: IdentifiedContentInfo) => boolean;
 type ParsedCardBreaker = (info: IdentifiedContentInfo, card: MaybeParsedCard) => boolean;
-
-type ContentRange = {
-	start: number;
-	end: number;
-}
 
 /** Used internally while  content  */
 type ParseResult = Record<CardID, MaybeParsedCard>;
@@ -123,7 +128,7 @@ export class ContentParser extends DeclarationParser {
 		return this.processParseResult(parseResult);
 	}
 
-	public static async getCard(id: FullID, app: App, options?: ParseOptions) {
+	public static async getCard(id: FullID, app: App, options?: GetCardParseOptions) {
 
 		const predicate: PopulationPredicate = {
 			iterationFilter: (idContentInfo) => {
@@ -157,7 +162,7 @@ export class ContentParser extends DeclarationParser {
 		const parseResult: ParseResult = {};
 
 		// Start with the most likely file that will contain both sides of the card.
-		for (const file of this.getAllFilesSortedByLikelihood(id, app, options?.likelyNoteIDs)) {
+		for (const file of this.getAllFilesSortedByLikelihood(id, app, Arr.nonEmpty(options?.likelyNoteIDs))) {
 
 			await this.getContentFromFile(file, app, parseResult, predicate, options);
 
@@ -203,12 +208,7 @@ export class ContentParser extends DeclarationParser {
 	}
 
 	private static isComplete(card: MaybeParsedCard): card is ParsedCard {
-		return (
-			card.frontID &&
-			typeof card.frontMarkdown === 'string' &&
-			card.backID &&
-			typeof card.backMarkdown === 'string'
-		) ? true : false;
+		return card.frontID !== undefined && Str.is(card.frontMarkdown) && card.backID !== undefined && Str.is(card.backMarkdown);
 	}
 
 	private static async getContentFromFile(
@@ -243,16 +243,12 @@ export class ContentParser extends DeclarationParser {
 
 		const cardInfos: IdentifiedContentInfo[] = [];
 
-		//#region Headings
-
-		const headings: HeadingCache[] = cache.headings ?? [];
+		// Look for declarations in headings
+		const headings = Arr.orEmpty(cache.headings);
 		const numberOfHeadings = headings.length;
 		for (let headingIndex = 0; headingIndex < numberOfHeadings; headingIndex++) {
 
-			const currentHeading = headings[headingIndex];
-			if (currentHeading === undefined)
-				throw new UnexpectedUndefinedError();
-
+			const currentHeading = Arr.expAt(headings, headingIndex);
 			const id = this.findFullIDInText(currentHeading.heading, noteID);
 			if (!id)
 				continue;
@@ -272,44 +268,35 @@ export class ContentParser extends DeclarationParser {
 				id: id,
 				scope: IDScope.Note,
 				contentInfo: {
-					range: {
-						start: currentHeading,
-						end: nextFrontHeadingStartPos,
-					},
-					section: {
-						type: this.SECTION_TYPE_HEADING,
-						position: currentHeading.position,
-					}
+					section: This.create.sectionCache(SectionType.Heading, currentHeading.position),
+					containerRange: This.create.sectionRange(currentHeading, nextFrontHeadingStartPos),
 				}
 			});
 		}
-
-		//#endregion
 
 		// Look for a declaration in the frontmatter
 		if (cache.frontmatter) {
 			for (const key of DeclarationConstants.Frontmatter.KEYS) {
 				const maybeDeclaration = Api.Frontmatter.recordFrom(cache.frontmatter, key);
-				const declaration = maybeDeclaration !== undefined ? ContentParser.declarationFromFrontmatter(maybeDeclaration) : null;
+				const declaration = maybeDeclaration !== undefined ? This.declarationFromFrontmatter(maybeDeclaration) : null;
 				if (declaration !== null) {
 					cardInfos.push({
 						id: fullIDFromDeclaration(declaration, noteID),
 						scope: declaration.idScope,
 						contentInfo: {
-							section: ContentParser.createFrontmatterSectionWithKey(key),
-							range: FullSectionRange,
+							section: This.create.frontmatterSectionWithKey(key),
+							containerRange: FullSectionRange,
 						}
 					});
 				}
 			}
 		}
 
-		//#region Sections
+		// Go through the rest of the section cache.
+		for (const section of Arr.orEmpty(cache.sections)) {
 
-		for (const section of cache.sections ?? []) {
-
-			const declaration = ContentParser.getDeclarationFromSection(section, noteID, fileContent);
-			if (!declaration)
+			const declaration = This.getDeclarationFromSection(section, noteID, fileContent);
+			if (declaration === null)
 				continue;
 
 			cardInfos.push({
@@ -317,26 +304,25 @@ export class ContentParser extends DeclarationParser {
 				scope: declaration.idScope,
 				contentInfo: {
 					section: section,
-					range: this.headingRangeForSection(section, cache),
+					containerRange: This.headingRangeForSection(section, cache),
 				}
 			});
 		}
 
-		for (const section of cache.sections ?? []) {
-			this.getAutoDeclarationsFromSection(section, cache, noteID, fileContent)
+		for (const section of Arr.orEmpty(cache.sections)) {
+			This.getAutoDeclarationsFromSection(section, cache, noteID, fileContent, undefined, { useProvider: true })
 				.forEach(processed => {
 					cardInfos.push({
 						id: fullIDFromDeclaration(processed.declaration, noteID),
 						scope: processed.declaration.idScope,
 						contentInfo: {
 							section: section, // When declaration.autoGenerated is `true`, this points to the section that contains the command, as the actual card declarations don't exist.
-							range: processed.range,
+							containerRange: processed.containerRange,
+							provider: processed.provider,
 						}
 					});
 				});
 		}
-
-		//#endregion
 
 		return cardInfos;
 	}
@@ -408,16 +394,21 @@ export class ContentParser extends DeclarationParser {
 			hideDeclarationBlock = true,
 		} = options?.contentRead || {};
 
-		const contentInfo = info.contentInfo;
-		const startDelimiterStartOffset = contentInfo.range.start?.position.start.offset ?? 0;
-		const startDelimiterEndOffset = contentInfo.range.start?.position.end.offset ?? 0;
-		const endDelimiterStartOffset = contentInfo.range.end?.position.start.offset;
+		const {
+			section: idSection,
+			containerRange,
+			provider,
+		} = info.contentInfo;
+
+		const startDelimiterStartOffset = containerRange.start?.position.start.offset ?? 0;
+		const startDelimiterEndOffset = containerRange.start?.position.end.offset ?? 0;
+		const endDelimiterStartOffset = containerRange.end?.position.start.offset;
 		const endOffset = endDelimiterStartOffset ?? fileContent.length;
 
 		const rangesToExclude: ContentRange[] = [];
 
 		// Range of substring before the content to be returned.
-		if (hideDeclarationBlock && contentInfo.section.type === this.SECTION_TYPE_HEADING) {
+		if (hideDeclarationBlock && idSection.type === SectionType.Heading) {
 
 			// Remove everything before the heading
 			rangesToExclude.push({
@@ -448,18 +439,15 @@ export class ContentParser extends DeclarationParser {
 
 		// Find ranges that are within the content to be returned that should be excluded.
 		for (const info of allInfos) {
-			const section = info.contentInfo.section;
+			const infoSection = info.contentInfo.section;
 
-			if (section.type === this.SECTION_TYPE_CODE) {
+			if (infoSection.type === SectionType.Code) {
 
-				if (section.position.start.offset > startDelimiterEndOffset && section.position.start.offset < endOffset) {
+				if (infoSection.position.start.offset > startDelimiterEndOffset && infoSection.position.start.offset < endOffset) {
 
-					const rangeToExclude = {
-						start: section.position.start.offset,
-						end: section.position.end.offset
-					};
+					const rangeToExclude = This.create.offsetRangeFromSection(infoSection);
 
-					if (hideDeclarationBlock || contentInfo.section.position.start.offset != rangeToExclude.start)
+					if (hideDeclarationBlock || idSection.position.start.offset !== rangeToExclude.start)
 						rangesToExclude.push(rangeToExclude);
 				}
 			}
@@ -471,32 +459,13 @@ export class ContentParser extends DeclarationParser {
 			end: fileContent.length
 		});
 
-		return this.subStringExcludingRanges(fileContent, rangesToExclude);
-	}
-
-	/**
-	 * @param fileContent
-	 * @param excludeRanges
-	 * @returns A subset of {@link fileContent} excluding what is referenced by {@link excludeRanges}.
-	 */
-	private static subStringExcludingRanges(fileContent: string, excludeRanges: ContentRange[]) {
-		if (excludeRanges.length == 0)
-			return "";
-
-		const sorted = excludeRanges.sort((a, b) => {
-			return a.start - b.start;
-		});
-
-		const rangesToJoin: string[] = [];
-		let startIndex = 0;
-
-		for (const range of sorted) {
-			rangesToJoin.push(fileContent.slice(startIndex, range.start));
-			startIndex = range.start + (range.end - range.start);
+		Env.log.p("getContentFromInfo: provider", provider)
+		if (provider !== undefined) {
+			rangesToExclude.push(...provider.rangesToExclude(This.create.offsetRange(startDelimiterEndOffset, endOffset)));
+			return StringManipulator.subStringByRanges(fileContent, rangesToExclude, { range: provider.rangeToInclude(), text: provider.text() });
+		} else {
+			return StringManipulator.subStringByRanges(fileContent, rangesToExclude)
 		}
-		rangesToJoin.push(fileContent.slice(startIndex));
-
-		return rangesToJoin.join(""); // If [separator is] omitted, the array elements are separated with a comma.
 	}
 
 	/**
@@ -524,3 +493,5 @@ export class ContentParser extends DeclarationParser {
 		});
 	}
 }
+
+const This = ContentParser;

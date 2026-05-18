@@ -1,7 +1,10 @@
-import { ContentRendererPostProcessor, ContentRendererProcessor, PostProcessorParameter } from "#/renderings/content/ContentRendererProcessor";
-import { Keymap } from "obsidian";
+import { ContentRendererProcessor } from "#/renderings/content/processors/bases";
+import { ContentRendererPostProcessor, PostProcessorParameter } from "#/renderings/content/processors/types";
+import { Api } from "#/utils/obs/api";
 
 export class LinkProcessor extends ContentRendererProcessor implements ContentRendererPostProcessor {
+
+	constructor() { super({}); }
 
 	public handleHtml(param: PostProcessorParameter) {
 
@@ -14,7 +17,7 @@ export class LinkProcessor extends ContentRendererProcessor implements ContentRe
 					event.preventDefault();
 					const href = (event.currentTarget as HTMLAnchorElement).getAttribute('href');
 					if (href)
-						await param.app.workspace.openLinkText(href, param.sourcePath, Keymap.isModEvent(event));
+						await param.app.workspace.openLinkText(href, param.sourcePath, Api.Event.paneType(event));
 				};
 				this.registerDomEvent(internalLinkEl, "click", handler);
 			}

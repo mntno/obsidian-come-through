@@ -186,6 +186,16 @@ export class ExplicitDeclarationAssistant extends CollectionableAssistant {
 		].includes(side.trim().toLowerCase());
 	}
 
+	public static tryGetSide(v: string): DeclarationSide | null {
+		if (!ExplicitDeclarationAssistant.isSideValid(v))
+			return null;
+		if (this.frontSideValues.includes(v))
+			return "front";
+		if (this.backSideValues.includes(v))
+			return "back";
+		return null;
+	}
+
 	private static readonly frontSideValues = ["f", "front"];
 	private static readonly backSideValues = ["b", "back"];
 }

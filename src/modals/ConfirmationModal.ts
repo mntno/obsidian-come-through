@@ -1,5 +1,5 @@
-import { t } from "Localization";
-import { BaseModal } from "modals/BaseModal";
+import { t } from "#/Localization";
+import { BaseModal } from "#/modals/BaseModal";
 import { App, Platform, Setting } from "obsidian";
 
 export class ConfirmationModal extends BaseModal {

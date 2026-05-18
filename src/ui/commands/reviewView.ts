@@ -2,7 +2,7 @@ import { Env } from "#/env";
 import { t } from "#/Localization";
 import { ReviewItemInfoModal } from "#/modals/ReviewItemInfoModal";
 import { ReviewItemInfo } from "#/scheduling/ReviewItemInfo";
-import { Ratings, ReviewSortOrder } from "#/scheduling/types";
+import { Ratings, Scheduling } from "#/scheduling/types";
 import { Api } from "#/utils/obs/api";
 import { ReviewView } from "#/views/review/ReviewView";
 import { App, Command } from "obsidian";
@@ -12,10 +12,10 @@ export const ReviewViewCommand = {
 
 	setSortOrder: (app: App): Command[] => {
 		const commands: Command[] = [];
-		for (const sortOrder of ["due", "retrievability"] satisfies ReviewSortOrder[]) {
+		for (const sortOrder of Scheduling.reviewSortOrder) {
 			commands.push({
 				id: ReviewView.TYPE + "-order-by-" + sortOrder,
-				name: "Set review sort order to " + sortOrder,
+				name: t.commands.setReviewSortOrder(t.settings.schedulers.reviewSortOrder[sortOrder]),
 				checkCallback: (checking: boolean) => {
 					const reviewView = app.workspace.getActiveViewOfType(ReviewView);
 					if (reviewView) {

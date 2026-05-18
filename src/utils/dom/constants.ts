@@ -2,6 +2,7 @@ import { Str } from "#/utils/ts";
 
 export const HtmlTag = {
 	SPAN: "span",
+	SMALL: "small",
 	SELECT: {
 		NAME: "select",
 		OPTION: {

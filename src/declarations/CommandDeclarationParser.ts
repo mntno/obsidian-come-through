@@ -1,19 +1,37 @@
-import { CardDeclaration } from "declarations/CardDeclaration";
-import { CommandableDeclarable } from "declarations/Commandable";
-import { IDScope } from "declarations/ExplicitDeclaration";
+import { CardDeclaration } from "#/declarations/CardDeclaration";
+import { CommandableDeclarable } from "#/declarations/Commandable";
+import { IDScope } from "#/declarations/ExplicitDeclaration";
+import { Env } from "#/env";
+import { FileParser, OffsetRange, SectionRange } from "#/utils/obs/FileParser";
 import { CacheItem } from "obsidian";
-import { FileParser, SectionRange } from "utils/obs/FileParser";
+
+export interface CommandDeclarationParserOptions {
+	useProvider?: boolean;
+}
+
+export interface CommandDeclarationParserParam {
+	/** Parent's heading level. */
+	sectionLevel: number;
+	inBetweenDelimiter: CacheItem;
+	index: number;
+	delimiters: CacheItem[];
+	/** The complete markdown content. */
+	content: string;
+	options?: CommandDeclarationParserOptions;
+}
 
 export interface CommandDeclarationParsable {
 	/**
 		* Creates a {@link CardDeclaration} and adds it to {@link generatedDeclarations}.
-		* @param sectionLevel
-		* @param inBetweenDelimiter
-		* @param index
-		* @param delimiters
 		*/
-	parse(sectionLevel: number, inBetweenDelimiter: CacheItem, index: number, delimiters: CacheItem[]): void;
+	parse(info: CommandDeclarationParserParam): void;
 	generatedDeclarations: GeneratedContentDeclaration[];
+}
+
+export interface ContentSectionProvider {
+	rangesToExclude(s: OffsetRange): OffsetRange[];
+	rangeToInclude(): OffsetRange;
+	text(): string;
 }
 
 /**
@@ -21,7 +39,8 @@ export interface CommandDeclarationParsable {
 	*/
 export type GeneratedContentDeclaration = {
 	declaration: CardDeclaration,
-	range: SectionRange,
+	containerRange: SectionRange,
+	provider?: ContentSectionProvider,
 };
 
 /**
@@ -44,7 +63,7 @@ export abstract class CommandDeclarationParser<T extends CommandableDeclarable>
 			})
 	};
 
-	abstract parse(sectionLevel: number, inBetweenDelimiter: CacheItem, index: number, delimiters: CacheItem[]): void;
+	public abstract parse(info: CommandDeclarationParserParam): void;
 	public generatedDeclarations: GeneratedContentDeclaration[] = [];
 
 	public readonly commandable: T;
@@ -57,9 +76,10 @@ export abstract class CommandDeclarationParser<T extends CommandableDeclarable>
 	protected generateDeclaration(
 		id: string,
 		isFront: boolean,
-		startDelimiter: CacheItem | null,
-		endDelimiter: CacheItem | null,
-		scope: IDScope = IDScope.Note) {
+		containerRange: SectionRange,
+		scope: IDScope,
+		provider?: ContentSectionProvider) {
+		Env.log.p("CommandDeclarationParser:generateDeclaration: id: ", id, ", front:", isFront);
 		this.generatedDeclarations.push({
 			declaration: new CardDeclaration(
 				id,
@@ -67,10 +87,8 @@ export abstract class CommandDeclarationParser<T extends CommandableDeclarable>
 				scope,
 				this.commandable.deckID,
 				true),
-			range: {
-				start: startDelimiter,
-				end: endDelimiter,
-			},
+			containerRange: containerRange,
+			provider: provider,
 		});
 	}
 

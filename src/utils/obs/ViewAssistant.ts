@@ -1,5 +1,6 @@
 import { CssClass as PluginCssClass } from "#/constants";
 import { El } from "#/utils/dom/dom";
+import { El as ObsEl } from "#/utils/obs/dom";
 import { UnexpectedUndefinedError } from "#/utils/errors";
 import { HtmlAttribute, CssClass as ObsCssClass } from "#/utils/obs/constants";
 import { InternalApi, InternalApiError } from "#/utils/obs/internal";
@@ -27,7 +28,7 @@ export class ViewAssistant {
 				// If failed to get value, add anyway to limit the line witdth in plugin's views.
 				const readableLineLength = InternalApi.getConfig(view.app.vault, "readableLineLength");
 				if (Bln.isTrue(readableLineLength) || Err.is(readableLineLength, InternalApiError))
-					El.Cls.add(previewViewEl, ObsCssClass.MarkdownView.Preview.IS_READABLE_LINE_WIDTH);
+					ObsEl.Cls.add(previewViewEl, ObsCssClass.MarkdownView.Preview.IS_READABLE_LINE_WIDTH);
 
 				this.previewSizerEl = previewViewEl.createDiv({ cls: Arr.toMutable(ObsCssClass.MarkdownView.SIZER) }, (el) => {
 					el.createDiv({ cls: Arr.toMutable(ObsCssClass.MarkdownView.PUSHER) });

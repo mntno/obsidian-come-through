@@ -1,6 +1,7 @@
+
 export class TableCreator {
-	public static create(parent: HTMLElement): TableSectionCreator {
-		return new TableSectionCreator(parent.createEl("table"));
+	public static create(parent: HTMLElement, o?: DomElementInfo | string, cb?: (el: HTMLTableElement) => void): TableSectionCreator {
+		return new TableSectionCreator(parent.createEl("table", o, cb));
 	}
 }
 

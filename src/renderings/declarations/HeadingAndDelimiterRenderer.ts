@@ -33,8 +33,9 @@ export class HeadingAndDelimiterRenderer
 
 						case "horizontal rule": {
 							el.appendText("The back side will begin after the first ");
-							// eslint-disable-next-line obsidianmd/ui/sentence-case -- Mid-sentence
-							el.createEl("a", { text: "horizontal rule", href: "https://daringfireball.net/projects/markdown/syntax#hr" });
+							el.createEl("a", { href: "https://daringfireball.net/projects/markdown/syntax#hr" }, (a) => {
+								a.appendText("horizontal rule");
+							});
 							el.appendText(" within the heading’s section.");
 							break;
 						}

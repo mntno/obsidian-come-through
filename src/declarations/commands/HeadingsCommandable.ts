@@ -2,9 +2,8 @@ import { CommandableAssistant, CommandableDeclarable } from "#/declarations/Comm
 import { CommandDeclarationParser } from "#/declarations/CommandDeclarationParser";
 import { NumberDeclarableProperty, OptionalNullableNumberDeclarableProperty } from "#/declarations/Declarable";
 import { LocalStrictKeys } from "#/types";
-import { UnexpectedUndefinedError } from "#/utils/errors";
 import { Obj } from "#/utils/ts";
-import { CacheItem, HeadingCache } from "obsidian";
+import { HeadingCache } from "obsidian";
 
 /**
 	* A command declaration that uses headings as dividers.
@@ -24,17 +23,17 @@ type PropertyNames = LocalStrictKeys<DefaultableHeadingsCommandableDeclarable, C
 export abstract class HeadingsCommandableAssistant extends CommandableAssistant {
 
 	public static override is(value: unknown): value is HeadingsCommandableDeclarable {
-		if (!This.Defaultable.is(value))
+		if (!ThisAssistant.Defaultable.is(value))
 			return false;
 
-		if (!This.PropertyType.isNum(Obj.getKey<DefaultableHeadingsCommandableDeclarable, PropertyNames>(value, "level")))
+		if (!ThisAssistant.PropertyType.isNum(Obj.getKey<DefaultableHeadingsCommandableDeclarable, PropertyNames>(value, "level")))
 			return false;
 
 		return true;
 	}
 
 	public static override isValid(declarable: HeadingsCommandableDeclarable) {
-		if (!This.Defaultable.isValid(declarable))
+		if (!ThisAssistant.Defaultable.isValid(declarable))
 			return false;
 
 		if (declarable.level < 1)
@@ -51,9 +50,9 @@ export abstract class HeadingsCommandableAssistant extends CommandableAssistant 
 
 			// Add optional properties with default values.
 			if (!Obj.hasKey<DefaultableHeadingsCommandableDeclarable, PropertyNames>(value, "level"))
-				Obj.setKey<DefaultableHeadingsCommandableDeclarable, PropertyNames>(value, "level", This.PropertyValue.OPTIONAL_NOT_ADDED);
+				Obj.setKey<DefaultableHeadingsCommandableDeclarable, PropertyNames>(value, "level", ThisAssistant.PropertyValue.OPTIONAL_NOT_ADDED);
 
-			if (!This.PropertyType.isOptionalNullableNumber(Obj.getKey<DefaultableHeadingsCommandableDeclarable, PropertyNames>(value, "level")))
+			if (!ThisAssistant.PropertyType.isOptionalNullableNumber(Obj.getKey<DefaultableHeadingsCommandableDeclarable, PropertyNames>(value, "level")))
 				return false;
 
 			return true;
@@ -63,14 +62,13 @@ export abstract class HeadingsCommandableAssistant extends CommandableAssistant 
 			if (!CommandableAssistant.isValid(declarable))
 				return false;
 
-			if (!This.PropertyEq.optionalNullOrNumber(declarable.level))
+			if (!ThisAssistant.PropertyEq.optionalNullOrNumber(declarable.level))
 				return false;
 
 			return true;
 		}
 	}
 }
-const This = HeadingsCommandableAssistant;
 
 /**
 	* @abstract
@@ -87,22 +85,6 @@ export abstract class HeadingsDeclarationParser<T extends HeadingsCommandableDec
 	protected isOnSpecifiedLevel(parentHeadingLevel: number, section: HeadingCache) {
 		return section.level == parentHeadingLevel + this.commandable.level;
 	}
-
-	/**
-		* Find the end delimiter, i.e., the next heading at the same level or lower.
-		* @param headingLevel The level the heading to return must be equal or lower to.
-		* @param index The index in {@link delimiters} to start searching from.
-		* @param delimiters
-		* @returns `null` if a next heading on the same level or lower was not found.
-		*/
-	protected static findNextHeading(headingLevel: number, index: number, delimiters: CacheItem[]) {
-		for (let nextIndex = index + 1; nextIndex < delimiters.length; nextIndex++) {
-			const nextDelimiter = delimiters[nextIndex];
-			if (nextDelimiter === undefined)
-				throw new UnexpectedUndefinedError();
-			if (HeadingsDeclarationParser.isHeadingCache(nextDelimiter) && headingLevel >= nextDelimiter.level)
-				return nextDelimiter;
-		}
-		return null;
-	}
 }
+
+const ThisAssistant = HeadingsCommandableAssistant;

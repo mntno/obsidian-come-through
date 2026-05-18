@@ -1,20 +1,15 @@
-import { Env } from "env";
+import { Env } from "#/env";
+import { ProcessorConfigProvider } from "#/renderings/content/ProcessorConfigProvider";
+import { ContentRendererProcessor } from "#/renderings/content/processors/bases";
+import { defaultProcessors } from "#/renderings/content/processors/defaultProcessors";
+import { ContentProcessorConfig, PostProcessorParameter, PreProcessorParameter } from "#/renderings/content/processors/types";
+import { Win } from "#/utils/obs/dom";
+import { RecycleComponent } from "#/utils/obs/RecycleComponent";
+import { Async } from "#/utils/ts";
 import { App, Component, MarkdownRenderer, TFile } from "obsidian";
-import { AudioProcessor } from "renderings/content/AudioProcessor";
-import { ContentProcessorConfig, ContentRendererProcessor, PostProcessorParameter, PreProcessorParameter } from "renderings/content/ContentRendererProcessor";
-import { HtmlElementWrapperProcessor } from "renderings/content/HtmlElementWrapperProcessor";
-import { LinkProcessor } from "renderings/content/LinkProcessor";
-import { VideoProcessor } from "renderings/content/VideoProcessor";
-import { RecycleComponent } from "utils/obs/RecycleComponent";
-import { PluginSettings } from "Settings";
-import { Async } from "utils/ts";
 
-export function createRenderConfig(_settings: PluginSettings): ContentProcessorConfig {
-	return {
-		media: {
-			preventMultiplePlayback: true,
-		}
-	};
+export function createRenderConfig(): ContentProcessorConfig {
+	return {};
 }
 
 export type ContentRenderOptions = {
@@ -26,6 +21,7 @@ export type ContentRenderOptions = {
 export class ContentRenderer extends RecycleComponent {
 
 	private readonly app: App;
+	private readonly processorConfigProvider: ProcessorConfigProvider;
 	public config: ContentProcessorConfig;
 
 	/**
@@ -44,36 +40,31 @@ export class ContentRenderer extends RecycleComponent {
 	/** These can be overridden by the options parameter of {@link render}. */
 	private customProcessors: ContentRendererProcessor[] = [];
 
-	public constructor(app: App, config: ContentProcessorConfig) {
-		Env.log.d("ContentRenderer:constructor");
+	public constructor(app: App, config: ContentProcessorConfig, processorConfigProvider: ProcessorConfigProvider) {
+		Env.log.proc("ContentRenderer:constructor");
 		super();
 		this.app = app;
+		this.processorConfigProvider = processorConfigProvider;
 		this.config = config;
 	}
 
 	protected override onRecycled(component: Component): void {
-		Env.log.d("ContentRenderer:onRecycled");
+		Env.log.proc("ContentRenderer:onRecycled");
 
 		/** These will always run, and before any custom ones. */
-		this.defaultProcessors = [
-			new HtmlElementWrapperProcessor({ applyLangTagsToNonLatinScripts: true }),
-			new LinkProcessor(),
-			new AudioProcessor(),
-			new VideoProcessor(),
-		];
-
+		this.defaultProcessors = defaultProcessors(this.processorConfigProvider);
 		this.defaultProcessors.forEach(p => component.addChild(p));
 	}
 
 	protected override onRecycling(): void {
-		Env.log.d("ContentRenderer:onRecycling");
+		Env.log.proc("ContentRenderer:onRecycling");
 		this.defaultProcessors = [];
 		this.customProcessors = [];
 	}
 
 	/** Set processes that will be used in all following calls to {@link render}, replacing any previous ones. Note that these will get unloaded and removed on recycling and therefore, if desired, need to be created and set again ahead of any following call to {@link render}. */
 	public setCustomProcessors(processors: ContentRendererProcessor[]) {
-		Env.log.d("ContentRenderer:setCustomProcessors");
+		Env.log.proc("ContentRenderer:setCustomProcessors");
 		this.customProcessors.forEach(p => this.recycleComponent.removeChild(p));
 		this.customProcessors = processors;
 		this.customProcessors.forEach(p => this.recycleComponent.addChild(p));
@@ -81,7 +72,7 @@ export class ContentRenderer extends RecycleComponent {
 
 	/** Note that these will get unloaded and removed on recycling and therefore, if desired, need to be created and set again ahead of any following call to {@link render}. */
 	public addCustomProcessors(processors: ContentRendererProcessor[]) {
-		Env.log.d("ContentRenderer:addCustomProcessors");
+		Env.log.proc("ContentRenderer:addCustomProcessors");
 		processors.forEach(p => {
 			this.customProcessors.push(p);
 			this.recycleComponent.addChild(p);
@@ -90,7 +81,7 @@ export class ContentRenderer extends RecycleComponent {
 
 	/** It is only necessary to remove processors if you do not want to use them during the next call to {@link render}. */
 	public removeCustomProcessors(processors: ContentRendererProcessor[]) {
-		Env.log.d("ContentRenderer:removeCustomProcessors");
+		Env.log.proc("ContentRenderer:removeCustomProcessors");
 		processors.forEach(p => {
 			this.customProcessors.remove(p);
 			this.recycleComponent.removeChild(p);
@@ -110,7 +101,7 @@ export class ContentRenderer extends RecycleComponent {
 			timeoutMs = 4000,
 		} = options ?? {};
 
-		Env.log.d("ContentRenderer:render: processors", processors, sourcePath);
+		Env.log.proc("ContentRenderer:render: processors", processors, sourcePath);
 
 		if (sourcePath === undefined) {
 			el.createSpan({ text: "Failed to render." });
@@ -140,17 +131,17 @@ export class ContentRenderer extends RecycleComponent {
 		// default run first
 		const allProcessors = [...this.defaultProcessors, ...this.customProcessors, ...processors];
 
-		Env.dev?.log.view(`ContentRenderer:render: Running ${allProcessors.filter(p => p.isPreProcessor()).length} pre processors: ${allProcessors.filter(p => p.isPreProcessor()).map(a => a.constructor.name).join(", ")}`);
+		Env.dev?.log.proc(`ContentRenderer:render: Running ${allProcessors.filter(p => p.isPreProcessor()).length} pre processors: ${allProcessors.filter(p => p.isPreProcessor()).map(a => a.constructor.name).join(", ")}`);
 		for (const processor of allProcessors) {
 			if (processor.isPreProcessor())
 				processor.handleMarkdown(preParameter);
 		}
 
-		Env.log.view("ContentRenderer:render: calling `MarkdownRenderer`, timeout", timeoutMs);
-		await Async.withTimeout(MarkdownRenderer.render(this.app, preParameter.markdown, el, sourcePath, this.recycleComponent), timeoutMs, el);
-		Env.log.view("\tRendering done.");
+		Env.log.proc("ContentRenderer:render: calling `MarkdownRenderer`, timeout", timeoutMs);
+		await Async.withTimeout(MarkdownRenderer.render(this.app, preParameter.markdown, el, sourcePath, this.recycleComponent), timeoutMs, Win.from(el));
+		Env.log.proc("\tRendering done.");
 
-		Env.dev?.log.view(`ContentRenderer:render: Running ${allProcessors.filter(p => p.isPostProcessor()).length} post processors: ${allProcessors.filter(p => p.isPostProcessor()).map(a => a.constructor.name).join(", ")}`);
+		Env.dev?.log.proc(`ContentRenderer:render: Running ${allProcessors.filter(p => p.isPostProcessor()).length} post processors: ${allProcessors.filter(p => p.isPostProcessor()).map(a => a.constructor.name).join(", ")}`);
 		for (const processor of allProcessors) {
 			if (processor.isPostProcessor())
 				processor.handleHtml(postParameter);

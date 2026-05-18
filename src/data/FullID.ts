@@ -1,4 +1,4 @@
-import { Env } from "env";
+import { Env } from "#/env";
 
 export type CardID = string;
 export type NoteID = string;

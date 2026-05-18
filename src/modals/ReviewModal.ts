@@ -155,7 +155,7 @@ export class ReviewModal extends FuzzySuggestModal<Item> {
 
 				if (item.text === "Folder") {
 					this.state = "folder";
-					this.folders = St.toArr(new Set(this.dataProvider.getAllNotes()
+					this.folders = St.toArr(new Set(this.dataProvider.note.all()
 						.map(path => Api.File.get(this.app.vault, path))
 						.map(file => file?.parent?.path)
 						.filter(f => f !== undefined)
@@ -166,7 +166,7 @@ export class ReviewModal extends FuzzySuggestModal<Item> {
 
 				if (item.text === "File") {
 					this.state = "file";
-					this.files = this.dataProvider.getAllNotes()
+					this.files = this.dataProvider.note.all()
 						.map(path => Api.File.get(this.app.vault, path))
 						.filter(f => f !== null)
 						.map(file => ({ type: "file", file }));
@@ -175,7 +175,7 @@ export class ReviewModal extends FuzzySuggestModal<Item> {
 				if (item.text === "Tag") {
 					this.state = "tag";
 					this.tags = St.toArr(Api.Tag.fromFrontmatter(
-						this.app.metadataCache, this.dataProvider.getAllNotes()
+						this.app.metadataCache, this.dataProvider.note.all()
 							.map(path => Api.File.get(this.app.vault, path))
 							.filter(f => f !== null)))
 						.map(tag => ({ type: "tag", tag: tag, display: Api.Tag.toDisplay(tag) }));

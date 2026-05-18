@@ -1,8 +1,7 @@
-import { DataStore } from "#/data/DataStore";
+import { DeckID } from "#/data/FullID";
 import { Env } from "#/env";
 import { t } from "#/Localization";
 import { DeckModal } from "#/modals/DeckModal";
-import { SettingsManager } from "#/Settings";
 import { OmitIndexSignature } from "#/types";
 import { Icon } from "#/ui/constants";
 import { OpenView } from "#/ui/viewActions";
@@ -10,8 +9,8 @@ import { Api } from "#/utils/obs/api";
 import { CssClass } from "#/utils/obs/constants";
 import { St } from "#/utils/ts";
 import { BaseView, BaseViewState } from "#/views/BaseView";
-import { DeckID } from "data/FullID";
-import { IconName, Menu, setIcon, setTooltip, ViewStateResult, WorkspaceLeaf } from "obsidian";
+import { DataWriterViewContext } from "#/views/types";
+import { ConfirmationModal, IconName, Menu, requireApiVersion, setIcon, setTooltip, ViewStateResult, WorkspaceLeaf } from "obsidian";
 
 interface CollectionsViewState extends BaseViewState {
 	selectedIDs: DeckID[];
@@ -21,7 +20,7 @@ const DEFAULT_STATE: OmitIndexSignature<CollectionsViewState> = {
 	selectedIDs: [],
 } as const;
 
-export class DecksView extends BaseView<CollectionsViewState> {
+export class DecksView extends BaseView<CollectionsViewState, DataWriterViewContext> {
 
 	public static readonly TYPE = "come-through-view-coll";
 
@@ -33,21 +32,22 @@ export class DecksView extends BaseView<CollectionsViewState> {
 	}
 
 	private state: CollectionsViewState = { ...DEFAULT_STATE };
-	private readonly data: DataStore;
 
 	private selectedIds = new Set<DeckID>();
 	private reviewSelectedButton: HTMLButtonElement | null = null;
 	private selectAllCheckbox: HTMLInputElement | null = null;
 
-	constructor(leaf: WorkspaceLeaf, settingsManager: SettingsManager, data: DataStore) {
+	constructor(leaf: WorkspaceLeaf, ctx: DataWriterViewContext) {
 		Env.log.view("CollectionsView:constructor");
-		super(leaf, settingsManager, {
-			data: data,
+		super(leaf, ctx, {
+			data: {
+				subscribeToChanges: true,
+				data: ctx.data,
+			},
 			paneMenu: {
 				addReloadItem: true,
 			},
 		});
-		this.data = data;
 	}
 
 	public override getIcon(): IconName {
@@ -78,9 +78,9 @@ export class DecksView extends BaseView<CollectionsViewState> {
 	protected override async onRender(): Promise<void> {
 		Env.log.view("CollectionsView:onRender");
 
-		const collections = this.data.collection.all();
+		const collections = this.ctx.data.collection.all();
 		const collectionIDs = collections.map(c => c.id);
-		const allItemsInCollection = this.data.item.allInCollection(collectionIDs);
+		const allItemsInCollection = this.ctx.data.item.allInCollection(collectionIDs);
 
 		//this.dom.create.el("h1", { text: "Decks" });
 		this.dom.create.div({ o: "icon" }, (el) => setIcon(el, Icon.View.COLLECTIONS));
@@ -119,7 +119,7 @@ export class DecksView extends BaseView<CollectionsViewState> {
 							div.createEl("button", { cls: CssClass.Component.CLICKABLE_ICON }, (button) => {
 								setIcon(button, Icon.Action.ADD);
 								setTooltip(button, t.views.collections.addNew);
-								this.contentRenderer.registerDomEvent(button, 'click', (_evt: PointerEvent) => DeckModal.add(this.app, this.data));
+								this.contentRenderer.registerDomEvent(button, 'click', (_evt: PointerEvent) => DeckModal.add(this.app, this.ctx.data));
 							});
 						});
 					});
@@ -130,8 +130,8 @@ export class DecksView extends BaseView<CollectionsViewState> {
 
 				for (const coll of collections) {
 
-					const numberOfCardsInDeck = allItemsInCollection.filter(card => this.data.filter.cardsInDeck(coll.id, card)).length;
-					const numberOfCardsInDeckIncludingChildren = this.data.getAllCardsForDeck(coll.id).length;
+					const numberOfCardsInDeck = allItemsInCollection.filter(card => this.ctx.data.filter.cardsInDeck(coll.id, card)).length;
+					const numberOfCardsInDeckIncludingChildren = this.ctx.data.getAllCardsForDeck(coll.id).length;
 					const col = row.add();
 
 					col.add(undefined, (el) => {
@@ -160,7 +160,7 @@ export class DecksView extends BaseView<CollectionsViewState> {
 
 					col.add({
 						text: coll.data.p.length == 0 ? "" : coll.data.p
-							.map(parentID => this.data.getDeck(parentID))
+							.map(parentID => this.ctx.data.getDeck(parentID))
 							.filter(d => d !== null)
 							.map(d => d.n)
 							.join(", ")
@@ -179,16 +179,42 @@ export class DecksView extends BaseView<CollectionsViewState> {
 									menu.addItem((item) => {
 										item.setTitle("Edit");
 										item.setIcon(Icon.Action.EDIT);
-										item.onClick(() => DeckModal.edit(this.app, this.data, coll.id));
+										item.setSection(Api.Menu.Section.Action);
+										item.onClick(() => DeckModal.edit(this.app, this.ctx.data, coll.id));
 									});
+
+									// menu.addItem((item) => {
+									// 	item.setTitle("Copy ID");
+									// 	item.setIcon(Icon.Action.COPY);
+									// 	item.setSection(Api.Menu.Section.Info);
+									// 	item.onClick(() => Api.App.writeToClipboard(coll.id).catch(Env.catch));
+									// });
 
 									menu.addItem((item) => {
 										item.setTitle("Delete");
 										item.setIcon(Icon.Action.DELETE);
-										item.setDisabled(numberOfCardsInDeck > 0)
-										item.onClick(async () => {
-											this.data.deleteDeck(coll.id, undefined, true);
-											await this.data.save();
+										item.setDisabled(numberOfCardsInDeck > 0);
+										item.setSection(Api.Menu.Section.Destructive);
+										item.setWarning(true);
+										item.onClick(() => {
+											if (requireApiVersion("1.13.0")) {
+												const modal = new ConfirmationModal(this.app);
+												modal.setTitle(t.actions.destructive.delete(coll.data.n));
+												modal.contentEl.createEl("p", { text: t.actions.destructive.confirmDelete(coll.data.n) });
+												modal.addButton((button) => button
+													.setDestructive()
+													.setButtonText(t.button.delete)
+													.onClick(async () => {
+														this.ctx.data.deleteDeck(coll.id, undefined, true);
+														await this.ctx.data.save();
+													}));
+												modal.addCancelButton(t.button.cancel);
+												modal.open();
+											}
+											else {
+												this.ctx.data.deleteDeck(coll.id, undefined, true);
+												void this.ctx.data.save();
+											}
 										});
 									});
 
@@ -229,7 +255,7 @@ export class DecksView extends BaseView<CollectionsViewState> {
 			});
 		});
 
-		const itemsNotInCollection = this.data.collection.filterNot();
+		const itemsNotInCollection = this.ctx.data.collection.filterNot();
 		if (itemsNotInCollection.length > 0) {
 			this.dom.create.p({
 				o: { text: `${(itemsNotInCollection.length == 1 ? "1 unit is" : `${itemsNotInCollection.length} units are`)} not assigned to any deck.`, cls: "italic", },

@@ -1,8 +1,9 @@
 import { UniqueID } from "#/data/UniqueID";
 import { Env } from "#/env";
 import { t } from "#/Localization";
+import { Api } from "#/utils/obs/api";
+import { Str } from "#/utils/ts";
 import { Command, Editor, MarkdownFileInfo, MarkdownView } from "obsidian";
-import { Str } from "utils/ts";
 
 export const EditorCommand = {
 
@@ -64,7 +65,7 @@ export const EditorCommand = {
 			editor.setCursor(editor.offsetToPos(editor.posToOffset(cursor) + firstPage.length - 2));
 
 			if (copyLastPage)
-				navigator.clipboard.writeText(lastPage).catch(Env.catch);
+				Api.App.writeToClipboard(lastPage).catch(Env.catch);
 		}
 	}),
 

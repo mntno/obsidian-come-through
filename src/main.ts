@@ -1,3 +1,5 @@
+import { ContentParserConfigAdapter } from "#/adapters/ContentParserConfigAdapter";
+import { ContentProcessorConfigAdapter } from "#/adapters/ContentProcessorConfigAdapter";
 import { DataProvider } from "#/data/DataProvider";
 import { DataStore, DataStoreRoot } from "#/data/DataStore";
 import { SyncManager } from "#/data/SyncManager";
@@ -6,14 +8,17 @@ import { Env } from "#/env";
 import { ConfirmationModal } from "#/modals/ConfirmationModal";
 import { Scheduler } from "#/scheduling/Scheduler";
 import { FsrsSchedulerConfig } from "#/scheduling/types";
-import { PluginSettings, SettingsChangedInfo, SettingsManager } from "#/Settings";
+import { SettingsChangedInfo, SettingsManager } from "#/settings/SettingsManager";
+import { PluginSettings } from "#/settings/types";
 import { Prettify } from "#/types";
-import { SettingTab } from "#/ui/SettingTab";
+import { SettingTab } from "#/ui/settings/SettingTab";
 import { UIAssistant } from "#/ui/UIAssistant";
 import { DomState } from "#/utils/obs/DomState";
+import { Obj } from "#/utils/ts";
 import { DecksView } from "#/views/DecksView";
 import { DefinedContentView } from "#/views/DefinedContentView";
 import { ReviewView } from "#/views/review/ReviewView";
+import { ContentParserViewContext, DataWriterViewContext, ViewContext } from "#/views/types";
 import { MarkdownPostProcessorContext, Plugin } from "obsidian";
 
 interface PluginData {
@@ -56,12 +61,16 @@ export default class ComeThroughPlugin extends Plugin {
 
 		this.addSettingTab(new SettingTab(this, this.settingsManager));
 
+		// Register event callbacks
+
 		this.registerEvent(this.app.workspace.on("file-open", this.syncManager.open));
 		this.registerEvent(this.app.metadataCache.on("changed", this.syncManager.changed));
 		this.registerEvent(this.app.vault.on("delete", this.syncManager.delete));
 		this.registerEvent(this.app.vault.on("rename", this.syncManager.rename));
 
-		this.app.workspace.onLayoutReady(() => this.registerEvents());
+		this.app.workspace.onLayoutReady(() => this.ui.actions.registerEvents(this.app, this));
+
+		// Register code blocks
 
 		for (const language of DeclarationManager.supportedCodeBlockLanguages) {
 			this.registerMarkdownCodeBlockProcessor(language, (source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext) => {
@@ -70,28 +79,30 @@ export default class ComeThroughPlugin extends Plugin {
 			}, -100); // Process this code block last, allowing other plugins to alter user input first.
 		}
 
-		// Views
-
-		this.registerView(
-			ReviewView.TYPE,
-			(leaf) => new ReviewView(leaf, this.settingsManager, this.scheduler, this.ui, this.dataStore)
-		);
-
-		this.registerView(
-			DecksView.TYPE,
-			(leaf) => new DecksView(leaf, this.settingsManager, this.dataStore)
-		);
-
-		this.registerView(
-			DefinedContentView.TYPE,
-			(leaf) => new DefinedContentView(leaf, this.settingsManager, this.dataStore)
-		);
+		// Register commands and ribbon icons
 
 		for (const command of this.ui.actions.getCommands(this.app))
 			this.addCommand(command);
-
 		for (const ribbonItem of this.ui.actions.getRibbonItems(this.app))
 			this.addRibbonIcon(ribbonItem.icon, ribbonItem.name, ribbonItem.callback);
+
+		// Register views
+
+		const viewCtx: ViewContext = { settingsManager: this.settingsManager, processorConfig: new ContentProcessorConfigAdapter(this.settingsManager) };
+		const writerCtx: DataWriterViewContext = { ...viewCtx, data: this.dataStore };
+		const contentParserCtx: ContentParserViewContext = { ...viewCtx, contentParserConfig: new ContentParserConfigAdapter(this.settingsManager) };
+
+		this.registerView(DecksView.TYPE, (leaf) => new DecksView(leaf, writerCtx));
+		this.registerView(DefinedContentView.TYPE, (leaf) => new DefinedContentView(leaf, contentParserCtx, this.dataStore));
+		this.registerView(ReviewView.TYPE, (leaf) => new ReviewView(
+			leaf,
+			{
+				...contentParserCtx,
+				...writerCtx,
+				scheduler: this.scheduler,
+			},
+			this.ui)
+		);
 	}
 
 	public override onunload() {
@@ -161,45 +172,23 @@ export default class ComeThroughPlugin extends Plugin {
 
 	// public onUserEnable(): void {}
 
-	/**
-	 * Registers the necessary event listeners for the plugin to function.
-	 * This includes file events for synchronization and context menu events for user actions.
-	 */
-	private registerEvents() {
-		this.ui.actions.registerEvents(this.app, this);
-	}
-
 	private static async loadPluginData(plugin: Plugin): Promise<PluginData> {
 
-		// `loadData`
-		// - Returns `null` if file doesn't exist.
-		// - returns `any`, cast it to bound the type.
-		const data = await plugin.loadData() as Prettify<Partial<PluginData>> | null;
-
-		// Prepare a temporary settings object by merging top-level properties.
-		const mergedSettings = {
-			...SettingsManager.DEFAULT_DATA,
-			...data?.settings || {}
-		};
-
-		// Explicitly merge the nested `schedulers` object.
-		// This combines the default schedulers with any schedulers from the loaded data.
-		// This only adds the default scheduler object(s) if their keys are missing, but it doesn't go deeper than that, i.e., if a defaukt key is there but some of that objects keys are missing, those missing keys will not be added.
-		mergedSettings.schedulers = {
-			...SettingsManager.DEFAULT_DATA.schedulers,
-			...(data?.settings?.schedulers || {})
-		};
+		// `loadData`:
+		// 	- Returns `null` if file doesn't exist.
+		//	- returns `any`, cast it to bound the type.
+		//
+		// `Partial` because fields may be missing in the json file on disk; forces nullish checks on access.
+		// `Prettify` expands the type so hover shows all fields inline.
+		const data = Obj.try<Prettify<Partial<PluginData>>>(await plugin.loadData());
 
 		return {
-			...{},
-			...{
-				settings: mergedSettings,
-				data: {
-					...DataStore.DEFAULT_DATA,
-					...data?.data || {}
-				}
-			} satisfies PluginData
-		};
+			settings: SettingsManager.fromPartial(data?.settings),
+			data: {
+				...DataStore.DEFAULT_DATA,
+				...data?.data || {}
+			}
+		} satisfies PluginData;
 	}
 
 	/** Writes {@link latestPluginDataRef} to disk. */

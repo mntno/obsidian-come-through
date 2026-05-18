@@ -8,7 +8,7 @@ import { BaseViewState } from "#/views/BaseView";
 import { DecksView } from "#/views/DecksView";
 import { DefinedContentView } from "#/views/DefinedContentView";
 import { ReviewView } from "#/views/review/ReviewView";
-import { DeckID, FullID } from "data/FullID";
+import { DeckID, FullID } from "#/data/FullID";
 import { App, PaneType, TFile } from "obsidian";
 
 
@@ -43,7 +43,7 @@ export const OpenView = {
 		};
 
 		const dataProvider = createDataProvider();
-		const allDecks = dataProvider.getAllCollections();
+		const allDecks = dataProvider.collection.all();
 		if (allDecks.length == 0) {
 			openView(OpenView.createState.forCollection(null), paneType);
 		}

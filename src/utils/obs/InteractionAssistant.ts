@@ -1,5 +1,6 @@
 import { Env } from "#/env";
-import { El, Win } from "#/utils/dom/dom";
+import { Win } from "#/utils/dom/dom";
+import { El, Win as ObsWin } from "#/utils/obs/dom";
 import { CssClass } from "#/utils/obs/constants";
 import { DomState } from "#/utils/obs/DomState";
 import { InternalApi } from "#/utils/obs/internal";
@@ -200,7 +201,7 @@ export class InteractionAssistant {
 
 		dispatchMouseDown: (e: MouseEvent) => {
 			this.doubleTap.clearMouseDownTimer();
-			this.doubleTap.mouseDownTimer = Win.Timeout.set(this.docOrThrow, 300, (win) => {
+			this.doubleTap.mouseDownTimer = Win.Timeout.set(ObsWin.from(this.docOrThrow), 300, (win) => {
 				this.doubleTap.mouseDownTimer = null;
 				win.dispatchEvent(new MouseEvent('mousedown', e));
 			});
@@ -208,7 +209,7 @@ export class InteractionAssistant {
 
 		clearMouseDownTimer: () => {
 			if (this.doubleTap.mouseDownTimer !== null) {
-				Win.Timeout.clear(this.docOrThrow, this.doubleTap.mouseDownTimer);
+				Win.Timeout.clear(ObsWin.from(this.docOrThrow), this.doubleTap.mouseDownTimer);
 				this.doubleTap.mouseDownTimer = null;
 			}
 		},

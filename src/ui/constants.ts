@@ -12,8 +12,9 @@ export const Icon = {
 		ADD: "plus",
 		RELOAD: "refresh-cw",
 		REVIEW: "drill",
-		EDIT: "pen",
+		EDIT: "pencil",
 		DELETE: "trash",
+		COPY: "copy",
 	} as const,
 
 	View: {

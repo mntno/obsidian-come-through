@@ -43,7 +43,7 @@ export class DeclarationManager {
 				() => ctx.getSectionInfo(el),
 				DeclarationCodec.toYaml(changedDeclaration)
 			);
-		}
+		};
 
 		renderer.render((declaration, type, deckSelectEl) => {
 

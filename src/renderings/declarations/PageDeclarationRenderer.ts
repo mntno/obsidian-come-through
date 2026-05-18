@@ -1,6 +1,6 @@
 import { DefaultableCardDeclarable, ExplicitDeclarationAssistant, MaybePageDeclarable } from "#/declarations/ExplicitDeclaration";
 import { DeclarationRenderable, DeclarationRenderAssistant, DeclarationRenderer } from "#/renderings/declarations/DeclarationRenderable";
-import { Str } from "utils/ts";
+import { Str } from "#/utils/ts";
 
 const Assistant = ExplicitDeclarationAssistant;
 

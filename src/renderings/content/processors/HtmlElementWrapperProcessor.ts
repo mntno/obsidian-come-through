@@ -1,7 +1,8 @@
 import { Env } from "#/env";
-import { ContentRendererPostProcessor, ContentRendererPostProcessorAssistant, ContentRendererPreProcessor, ContentRendererProcessor, PostProcessorParameter, PreProcessorParameter } from "#/renderings/content/ContentRendererProcessor";
+import { ContentRendererProcessor } from "#/renderings/content/processors/bases";
+import { ContentRendererPostProcessor, ContentRendererPreProcessor, PostProcessorParameter, PreProcessorParameter } from "#/renderings/content/processors/types";
 import { HtmlAttribute, HtmlTag } from "#/utils/dom/constants";
-import { El } from "#/utils/obs/dom";
+import { Doc, El, Win } from "#/utils/obs/dom";
 
 
 export type HtmlElementWrapperProcessorConfig = {
@@ -9,18 +10,15 @@ export type HtmlElementWrapperProcessorConfig = {
 }
 
 /** Wraps specific HTML elements. */
-export class HtmlElementWrapperProcessor extends ContentRendererProcessor implements ContentRendererPreProcessor, ContentRendererPostProcessor {
-
-	private config: HtmlElementWrapperProcessorConfig;
+export class HtmlElementWrapperProcessor extends ContentRendererProcessor<HtmlElementWrapperProcessorConfig> implements ContentRendererPreProcessor, ContentRendererPostProcessor {
 
 	constructor(config: HtmlElementWrapperProcessorConfig) {
-		Env.log.d("HtmlElementWrapperProcessor:constructor");
-		super();
-		this.config = config;
+		Env.log.proc("HtmlElementWrapperProcessor:constructor");
+		super(config);
 	}
 
 	public handleMarkdown(param: PreProcessorParameter): void {
-		Env.log.d("HtmlElementWrapperProcessor:handleMarkdown");
+		Env.log.proc("HtmlElementWrapperProcessor:handleMarkdown");
 		let content = param.markdown;
 
 		content = content.replace(ELEMENT_REGEX, (html, tag) => {
@@ -31,10 +29,9 @@ export class HtmlElementWrapperProcessor extends ContentRendererProcessor implem
 	}
 
 	handleHtml(param: PostProcessorParameter): void {
-		Env.log.d("HtmlElementWrapperProcessor:handleHtml");
-		const assistant = new ContentRendererPostProcessorAssistant(param);
+		Env.log.proc("HtmlElementWrapperProcessor:handleHtml");
 		if (this.config.applyLangTagsToNonLatinScripts)
-			this.applyLangTagsToNonLatinScripts(assistant);
+			HtmlElementWrapperProcessor.applyLangTagsToNonLatinScripts(param);
 	}
 
 	/**
@@ -42,12 +39,12 @@ export class HtmlElementWrapperProcessor extends ContentRendererProcessor implem
 	 * consecutive Thai characters, and wraps those character sequences in a
 	 * `<span>` element with the `lang="th"` attribute.
 	 *
-	 * @param element The root HTMLElement to start the traversal from.
+	 * @param param The parameter object containing the HTML element to process.
 	 */
-	private applyLangTagsToNonLatinScripts(assistant: ContentRendererPostProcessorAssistant): void {
-		Env.log.d("HtmlElementWrapperProcessor:applyLangTagsToNonLatinScripts");
-		const doc = assistant.doc;
-		const walker = doc.createTreeWalker(assistant.el, NodeFilter.SHOW_TEXT, null);
+	private static applyLangTagsToNonLatinScripts(param: PostProcessorParameter): void {
+		Env.log.proc("HtmlElementWrapperProcessor:applyLangTagsToNonLatinScripts");
+		const doc = Doc.from(param.el);
+		const walker = doc.createTreeWalker(param.el, NodeFilter.SHOW_TEXT, null);
 		const textNodes: Node[] = [];
 
 		let node;
@@ -75,7 +72,7 @@ export class HtmlElementWrapperProcessor extends ContentRendererProcessor implem
 			const matches = [...text.matchAll(THAI_REGEX)];
 
 			if (matches.length > 0) {
-				const fragment = doc.createDocumentFragment();
+				const fragment = Win.createFragment(doc);
 
 				let lastIndex = 0;
 
@@ -88,7 +85,7 @@ export class HtmlElementWrapperProcessor extends ContentRendererProcessor implem
 						fragment.appendChild(doc.createTextNode(beforeText));
 					}
 
-					const span = doc.createElement(HtmlTag.SPAN);
+					const span = Win.createEl(doc, HtmlTag.SPAN);
 					span.setAttribute(HtmlAttribute.Lang.NAME, HtmlAttribute.Lang.Values.THAI);
 					span.textContent = matchText;
 					fragment.appendChild(span);

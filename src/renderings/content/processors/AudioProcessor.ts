@@ -1,9 +1,15 @@
+import { Env } from "#/env";
+import { ContentRendererProcessor } from "#/renderings/content/processors/bases";
+import { ContentRendererPostProcessor, PostProcessorParameter } from "#/renderings/content/processors/types";
+import { parseStrictFloat } from "#/TypeAssistant";
+import { HtmlAttribute } from "#/utils/dom/constants";
 import { Win } from "#/utils/dom/dom";
-import { Env } from "env";
+import { Win as ObsWin } from "#/utils/obs/dom";
 import { Component } from "obsidian";
-import { parseStrictFloat } from "TypeAssistant";
-import { HtmlAttribute } from "utils/dom/constants";
-import { ContentRendererPostProcessor, ContentRendererProcessor, PostProcessorParameter } from "./ContentRendererProcessor";
+
+export type AudioProcessorConfig = {
+	preventMultiplePlayback: boolean;
+};
 
 type AudioPlayerInfo = {
 	readonly source: string;
@@ -31,7 +37,7 @@ type AudioPlayerInfo = {
 	}
 }
 
-export class AudioProcessor extends ContentRendererProcessor implements ContentRendererPostProcessor {
+export class AudioProcessor extends ContentRendererProcessor<AudioProcessorConfig> implements ContentRendererPostProcessor {
 
 	public override onunload(): void {
 		Env.log.proc(`AudioProcessor:onunload: audio elements: ${this.registeredAudioItems.length}`);
@@ -58,7 +64,7 @@ export class AudioProcessor extends ContentRendererProcessor implements ContentR
 			this.registeredAudioItems.push({ el: audioEl, controller: controller });
 			controller.init(audioEl);
 
-			if (param.config.media.preventMultiplePlayback)
+			if (this.config.preventMultiplePlayback)
 				this.preventMultiplePlayback(audioEl);
 		});
 	}
@@ -396,7 +402,7 @@ class TimeLoopController extends Component {
 	public cancelLoopTimeout() {
 		if (this.state.loopTimeoutID !== null) {
 			Env.log.proc(`\tcancelLoopTimeout: cleared timeout`);
-			Win.Timeout.clear(this.param.el, this.state.loopTimeoutID);
+			Win.Timeout.clear(ObsWin.from(this.param.el), this.state.loopTimeoutID);
 			this.state.loopTimeoutID = null;
 		}
 	}
@@ -451,7 +457,7 @@ class TimeLoopController extends Component {
 				Env.log.proc(`\t\tSetting playback position to ${this.info.startTime}. Will request playback in ${this.info.loopDelay}s`);
 				this.seekTo(player, this.info.startTime);
 
-				this.state.loopTimeoutID = Win.Timeout.set(this.param.el, this.info.loopDelay, () => {
+				this.state.loopTimeoutID = Win.Timeout.set(ObsWin.from(this.param.el), this.info.loopDelay, () => {
 					this.cancelLoopTimeout();
 					player.play().catch(Env.catch);
 				});

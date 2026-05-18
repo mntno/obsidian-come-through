@@ -3,6 +3,7 @@ import { DeckID } from "#/data/FullID";
 import { DeckableDeclarable } from "#/declarations/Collectionable";
 import { Declarable } from "#/declarations/Declarable";
 import { HtmlTag } from "#/utils/dom/constants";
+import { El } from "#/utils/obs/dom";
 import { TableCreator } from "#/utils/dom/table";
 import { Component, setIcon } from "obsidian";
 
@@ -78,8 +79,8 @@ export class DeclarationRenderAssistant {
 	}
 
 	public setError() {
-		this.containerEl.addClass("error");
-		this.titleContainer.addClass("error");
+		El.Cls.add(this.containerEl, "error");
+		El.Cls.add(this.titleContainer, "error");
 	}
 
 	public setTitle(title: string) {
@@ -87,23 +88,23 @@ export class DeclarationRenderAssistant {
 	}
 
 	public createEl<K extends keyof HTMLElementTagNameMap>(tag: K, o?: DomElementInfo | string, callback?: (el: HTMLElementTagNameMap[K]) => void): HTMLElementTagNameMap[K] {
-		return this.contentContainerEl.createEl(tag, o, callback);
+		return El.create(this.contentContainerEl, tag, o, callback);
 	}
 
 	public addParagraph(text?: string) {
 		if (text !== undefined)
-			this.contentContainerEl.createEl("p", { text: text });
+			El.create(this.contentContainerEl, "p", { text: text });
 	}
 
 	public addBulletList(texts: string[]) {
-		this.contentContainerEl.createEl("ul", {}, (el) => {
+		El.create(this.contentContainerEl, "ul", {}, (el) => {
 			for (const text of texts)
-				el.createEl("li", { text: text });
+				El.create(el, "li", { text: text });
 		});
 	}
 
 	public createBulletList(liEls: (ulEL: HTMLUListElement) => HTMLLIElement[]) {
-		this.contentContainerEl.createEl("ul", {}, (el) => {
+		El.create(this.contentContainerEl, "ul", {}, (el) => {
 			for (const liEl of liEls(el))
 				el.appendChild(liEl);
 		});

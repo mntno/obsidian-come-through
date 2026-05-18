@@ -1,11 +1,11 @@
 import { CommandableDeclarable } from "#/declarations/Commandable";
-import { CommandDeclarationParsable, CommandDeclarationParser } from "#/declarations/CommandDeclarationParser";
+import { CommandDeclarationParsable, CommandDeclarationParser, CommandDeclarationParserParam } from "#/declarations/CommandDeclarationParser";
 import { CommandName, Commands } from "#/declarations/CommandNames";
 import { HeadingsCommandableAssistant, HeadingsCommandableDeclarable } from "#/declarations/commands/HeadingsCommandable";
 import { IDScope } from "#/declarations/ExplicitDeclaration";
 import { Env } from "#/env";
-import { UnexpectedUndefinedError } from "#/utils/errors";
-import { Num, UNARY_UNION_SUPPRESS } from "#/utils/ts";
+import { SectionType } from "#/utils/obs/FileParser";
+import { Arr, Num, UNARY_UNION_SUPPRESS } from "#/utils/ts";
 import { CacheItem, HeadingCache } from "obsidian";
 
 export interface HeadingAndDelimiterDeclarable extends HeadingsCommandableDeclarable {
@@ -49,7 +49,6 @@ export class HeadingAndDelimiterAssistant extends HeadingsCommandableAssistant {
 		return false;
 	}
 }
-const ThisAssistant = HeadingAndDelimiterAssistant;
 
 export class HeadingAndDelimiterParser extends CommandDeclarationParser<HeadingAndDelimiterDeclarable> {
 
@@ -62,31 +61,31 @@ export class HeadingAndDelimiterParser extends CommandDeclarationParser<HeadingA
 	/** If set, it means that the current iteration is the back side and that this is the expected level of the heading that marks the end of the back side. */
 	private lastFrontHeadingLevel: number | undefined;
 
-	public parse(parentHeadingLevel: number, inBetweenDelimiter: CacheItem, index: number, delimiters: CacheItem[]) {
+	public parse(param: CommandDeclarationParserParam) {
 
-		const isDelimiterHeading = HeadingAndDelimiterParser.isHeadingCache(inBetweenDelimiter);
+		const headingDelimiter = ThisParser.asHeadingCache(param.inBetweenDelimiter);
 
 		// Abort if this is a heading that is on the wrong level.
-		if (isDelimiterHeading) {
-			if (!this.isOnSpecifiedLevel(parentHeadingLevel, inBetweenDelimiter))
+		if (headingDelimiter !== null) {
+			if (!this.isOnSpecifiedLevel(param.sectionLevel, headingDelimiter))
 				return;
 		}
 
 		let id: string;
 		let idScope: IDScope;
 
-		if (isDelimiterHeading) {
-			const uniqueID = this.tryParseUniqueID(inBetweenDelimiter.heading);
+		if (headingDelimiter !== null) {
+			const uniqueID = this.tryParseUniqueID(headingDelimiter.heading);
 			if (uniqueID !== null) {
 				id = uniqueID;
 				idScope = IDScope.Unique;
 			}
 			else {
-				id = inBetweenDelimiter.heading;
+				id = headingDelimiter.heading;
 				idScope = IDScope.Note;
 			}
 		}
-		else if (HeadingAndDelimiterParser.isSectionType(inBetweenDelimiter, HeadingAndDelimiterParser.SECTION_TYPE_THEMATICBREAK)) {
+		else if (ThisParser.isSectionCacheWithType(param.inBetweenDelimiter, SectionType.ThematicBreak)) {
 			const lastDecl = this.lastDeclaration();
 			id = lastDecl.declaration.id;
 			idScope = lastDecl.declaration.idScope;
@@ -96,35 +95,32 @@ export class HeadingAndDelimiterParser extends CommandDeclarationParser<HeadingA
 
 		// Find the end delimiter of this side.
 		let nextDelimiter: CacheItem | null = null;
-		for (let nextIndex = index + 1; nextIndex < delimiters.length; nextIndex++) {
-			const maybeNextDelimiter = delimiters[nextIndex];
-			if (maybeNextDelimiter === undefined)
-				throw new UnexpectedUndefinedError();
+		for (let nextIndex = param.index + 1; nextIndex < param.delimiters.length; nextIndex++) {
+			const maybeNextDelimiter = Arr.expAt(param.delimiters, nextIndex);
 
 			// Front side should end as soon as the first delimiter (as specified by the declaration) is found.
-			if (this.lastFrontHeadingLevel === undefined && HeadingAndDelimiterParser.isSectionType(maybeNextDelimiter, HeadingAndDelimiterParser.SECTION_TYPE_THEMATICBREAK))
+			if (this.lastFrontHeadingLevel === undefined && ThisParser.isSectionCacheWithType(maybeNextDelimiter, SectionType.ThematicBreak))
 				nextDelimiter = maybeNextDelimiter;
 			// Back side ends when a heading of same or lower level as the heading that begain the front side is found, or when nothing is found.
-			else if (Num.is(this.lastFrontHeadingLevel) && HeadingAndDelimiterParser.isHeadingCache(maybeNextDelimiter) && this.lastFrontHeadingLevel >= maybeNextDelimiter.level)
+			else if (Num.is(this.lastFrontHeadingLevel) && ThisParser.isHeadingCache(maybeNextDelimiter) && this.lastFrontHeadingLevel >= maybeNextDelimiter.level)
 				nextDelimiter = maybeNextDelimiter;
 
 			if (nextDelimiter !== null)
 				break;
 		}
 
-		if (isDelimiterHeading) {
+		if (headingDelimiter !== null) {
 			Env.assert(this.lastFrontHeadingLevel === undefined);
-			this.lastFrontHeadingLevel = inBetweenDelimiter.level; // Next iteration is the back side. Save the level to be able to find the next heading that counts as the end of the back side.
+			this.lastFrontHeadingLevel = headingDelimiter.level; // Next iteration is the back side. Save the level to be able to find the next heading that counts as the end of the back side.
 
-			Env.assert(nextDelimiter !== null && HeadingAndDelimiterParser.isSectionType(nextDelimiter, HeadingAndDelimiterParser.SECTION_TYPE_THEMATICBREAK));
+			Env.assert(nextDelimiter !== null && ThisParser.isSectionCacheWithType(nextDelimiter, SectionType.ThematicBreak));
 			if (nextDelimiter === null)
 				throw new Error("No delimiter found, for back side");
 
 			this.generateDeclaration(
 				id,
 				true,
-				inBetweenDelimiter,
-				HeadingAndDelimiterParser.createCacheItem(nextDelimiter.position.start),
+				ThisParser.create.sectionRange(param.inBetweenDelimiter, ThisParser.create.cacheItem(nextDelimiter.position.start)),
 				idScope
 			);
 		}
@@ -133,8 +129,10 @@ export class HeadingAndDelimiterParser extends CommandDeclarationParser<HeadingA
 			this.generateDeclaration(
 				id,
 				false,
-				HeadingAndDelimiterParser.createCacheItem(inBetweenDelimiter.position.end),
-				nextDelimiter, // If nextDelimiter is null it's the end of the file.
+				ThisParser.create.sectionRange(
+					ThisParser.create.cacheItem(param.inBetweenDelimiter.position.end),
+					nextDelimiter // If nextDelimiter is null it's the end of the file
+				),
 				idScope
 			);
 		}
@@ -150,3 +148,6 @@ export class HeadingAndDelimiterParser extends CommandDeclarationParser<HeadingA
 		return section.level == parentHeadingLevel + this.commandable.level;
 	}
 }
+
+const ThisAssistant = HeadingAndDelimiterAssistant;
+const ThisParser = HeadingAndDelimiterParser;

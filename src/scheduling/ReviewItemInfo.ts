@@ -1,8 +1,8 @@
-import { CardData } from "data/DataStore";
-import { Fsrs } from "scheduling/Fsrs";
-import { Rating } from 'scheduling/types';
+import { CardData } from "#/data/types";
+import { Fsrs } from "#/scheduling/Fsrs";
+import { Rating } from '#/scheduling/types';
+import { DateTime } from "#/utils/datetime";
 import { Card, Rating as FsrsRating, State as FsrsState, show_diff_message } from "ts-fsrs";
-import { DateTime } from "utils/datetime";
 
 const timeUnit = [" sec", " min", " hours", " days", " months", " years"];
 

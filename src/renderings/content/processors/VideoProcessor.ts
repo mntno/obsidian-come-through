@@ -1,7 +1,11 @@
-import { HtmlAttribute } from "utils/dom/constants";
-import { ContentRendererPostProcessor, ContentRendererProcessor, PostProcessorParameter } from "./ContentRendererProcessor";
+import { ContentRendererProcessor } from "#/renderings/content/processors/bases";
+import { ContentRendererPostProcessor, PostProcessorParameter } from "#/renderings/content/processors/types";
+import { HtmlAttribute } from "#/utils/dom/constants";
 
 export class VideoProcessor extends ContentRendererProcessor implements ContentRendererPostProcessor {
+
+	constructor() { super({}); }
+
 	public handleHtml(param: PostProcessorParameter): void {
 		param.el.querySelectorAll("video").forEach(el => this.handleVideo(param, el));
 	}
