@@ -116,12 +116,5 @@ export default defineConfig(
 			"obsidianmd/ui/sentence-case": ["warn", sentenceCaseOptions],
 			"obsidianmd/ui/sentence-case-locale-module": ["warn", sentenceCaseOptions],
 		},
-	},
-	// Remove when min version is 1.13
-	{
-		files: ["src/ui/settings/SettingTab.ts"],
-		rules: {
-			"eslint-comments/no-restricted-disable": "off",
-		},
 	}
 );

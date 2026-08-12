@@ -28,10 +28,9 @@ export class SettingTab extends PluginSettingTab {
 			plugin.settings = settingsManager.settings;
 
 		this.settingsManager.registerOnChangedCallback(this.onChangedCallback);
-	}
-
-	public override hide(): void {
-		this.settingsManager.unregisterOnChangedCallback(this.onChangedCallback);
+		plugin.register(() => {
+			this.settingsManager.unregisterOnChangedCallback(this.onChangedCallback);
+		});
 	}
 
 	private onChangedCallback: SettingsChanged = (_, isExternal) => {
@@ -39,7 +38,7 @@ export class SettingTab extends PluginSettingTab {
 			if (requireApiVersion("1.13.0"))
 				this.update();
 			else
-				this.display(); // eslint-disable-line @typescript-eslint/no-deprecated -- Legacy refresh: display() is the only way to re-render the tab on Obsidian < 1.13.0.
+				this.display(); // Legacy refresh: display() is the only way to re-render the tab on Obsidian < 1.13.0.
 		}
 	}
 
